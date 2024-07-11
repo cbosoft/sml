@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use anyhow::anyhow;
 use json;
 use json::JsonValue;
+use serde::{Serialize, Deserialize};
 
 
 pub struct Condition {
@@ -40,7 +40,7 @@ impl State {
 }
 
 
-pub struct SM /* <InputType, OutputType> */ {
+pub struct SM {
     states: HashMap<String, State>,
     current_state: String,
 }
@@ -73,9 +73,9 @@ impl SM {
             }
             let mut body_parsed = Vec::new();
             for item in body.members() {
-                let condition = item["condition"];
+                let condition = item["condition"].clone();
                 let condition = Condition::new(condition);
-                let expressions = item["expressions"];
+                let expressions = item["expressions"].clone();
                 let expressions: Vec<_> = expressions.members().map(|j| Expression::new(j.clone())).collect();
                 body_parsed.push((condition, expressions));
             }
@@ -87,26 +87,25 @@ impl SM {
         if current_state.is_none() {
             return Err(anyhow::anyhow!("no states defined!"));
         }
+        let current_state = current_state.unwrap();
 
         Ok(Self { states, current_state })
     }
 
-    pub fn run_node(node: JsonValue) -> anyhow::Result<JsonValue> {
+    pub fn run<'a, I: Serialize, O: Deserialize<'a>>(&self, i: I) -> anyhow::Result<O> {
+        let i = serde_json::to_string(&i)?;
+        let i = json::parse(&i)?;
+        let state = self.states.get(&self.current_state).unwrap();
+        let o = Self::run_state(state, i)?;
+        let o = o.to_string();
+        let o: O = serde_json::from_str(&o)?;
+        Ok(o)
+    }
 
-        if !node.is_object() {
-            return Err(anyhow::anyhow!("node expected to be object"));
-        }
-
+    fn run_state(state: &State, i: JsonValue) -> anyhow::Result<JsonValue> {
         todo!();
     }
 
-    pub fn run_condition(node: JsonValue) -> anyhow::Result<JsonValue> {
-        let left = node["left"];
-        let op = node["op"];
-        let right = node["right"];
-
-        // 
-    }
 }
 
 
