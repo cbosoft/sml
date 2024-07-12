@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use json;
 use json::JsonValue;
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 
 pub struct Condition {
@@ -92,7 +92,9 @@ impl SM {
         Ok(Self { states, current_state })
     }
 
-    pub fn run<'a, I: Serialize, O: Deserialize<'a>>(&self, i: I) -> anyhow::Result<O> {
+    // Use `DeserializeOwned` instead `Deserialize` and dealing with lifetime issues
+    // https://users.rust-lang.org/t/lifetime-confusion-with-function-parameter-serde-deserialize/76842
+    pub fn run<I: Serialize, O: DeserializeOwned>(&mut self, i: I) -> anyhow::Result<O> {
         let i = serde_json::to_string(&i)?;
         let i = json::parse(&i)?;
         let state = self.states.get(&self.current_state).unwrap();
