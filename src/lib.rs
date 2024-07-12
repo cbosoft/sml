@@ -8,36 +8,76 @@ use json::JsonValue;
 use serde::{Serialize, de::DeserializeOwned};
 
 
-pub struct Condition {
-    json: JsonValue
+pub enum Value {
+    String(String),
+    Integer(i64),
+    Float(f64),
+    Bool(bool)
 }
 
-impl Condition {
-    pub fn new(json: JsonValue) -> Self {
-        Self { json }
+impl Value {
+    pub fn new(json: JsonValue) -> anyhow::Result<Self> {
+        todo!()
     }
 }
 
+pub enum UnaryOperation {
+    Negate,
+    Increment,
+    Decrement,
+}
 
-pub struct Expression {
-    json: JsonValue
+impl UnaryOperation {
+    pub fn new(json: JsonValue) -> anyhow::Result<Self> {
+        todo!()
+    }
+}
+
+pub enum BinaryOperation {
+    Add,
+    Subtract,
+    Divide,
+    Multiply,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+    Equal,
+    NotEqual
+}
+
+impl BinaryOperation {
+    pub fn new(json: JsonValue) -> anyhow::Result<Self> {
+        todo!()
+    }
+}
+
+pub enum Expression {
+    Unary(UnaryOperation, Value),
+    Binary(BinaryOperation, Value, Value),
 }
 
 impl Expression {
-    pub fn new(json: JsonValue) -> Self {
-        Self { json }
+    pub fn new(json: JsonValue) -> anyhow::Result<Self> {
+        todo!()
     }
 }
 
 
 pub struct State {
+    /// Name of state which is the default successor to this one
     default: String,
+
+    /// Expressions evaluated when this state is visited
     head: Vec<Expression>,
-    body: Vec<(Condition, Vec<Expression>)>
+
+    /// List of condition expressions and associated expressions.
+    /// When the condition expression is true, the associated body of expressions is run.
+    body: Vec<(Expression, Vec<Expression>)>,
 }
 
 impl State {
-    pub fn new(default: String, head: Vec<Expression>, body: Vec<(Condition, Vec<Expression>)>) -> Self {
+    pub fn new(default: String, head: Vec<Expression>, body: Vec<(Expression, Vec<Expression>)>) -> Self {
         Self { default, head, body }
     }
 }
@@ -82,7 +122,8 @@ impl SM {
             if !head.is_array() {
                 return Err(anyhow::anyhow!("head expected to be array"));
             }
-            let head: Vec<_> = head.members().map(|j| Expression::new(j.clone())).collect();
+            let head: Result<Vec<_>, _> = head.members().map(|j| Expression::new(j.clone())).collect();
+            let head = head?;
 
             let body = &state_data["body"];
             if !body.is_array() {
@@ -91,9 +132,10 @@ impl SM {
             let mut body_parsed = Vec::new();
             for item in body.members() {
                 let condition = item["condition"].clone();
-                let condition = Condition::new(condition);
+                let condition = Expression::new(condition)?;
                 let expressions = item["expressions"].clone();
-                let expressions: Vec<_> = expressions.members().map(|j| Expression::new(j.clone())).collect();
+                let expressions: Result<Vec<_>, _> = expressions.members().map(|j| Expression::new(j.clone())).collect();
+                let expressions = expressions?;
                 body_parsed.push((condition, expressions));
             }
             
