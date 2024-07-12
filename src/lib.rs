@@ -8,16 +8,57 @@ use json::JsonValue;
 use serde::{Serialize, de::DeserializeOwned};
 
 
+pub enum IdentifierKind {
+    Inputs,
+    Outputs,
+    Globals
+}
+
+
 pub enum Value {
+    Identifier(IdentifierKind, String),
     String(String),
-    Integer(i64),
-    Float(f64),
+    Number(f64),
     Bool(bool)
 }
 
 impl Value {
-    pub fn new(json: JsonValue) -> anyhow::Result<Self> {
-        todo!()
+    pub fn new(json: &JsonValue) -> anyhow::Result<Self> {
+        if json.is_string() {
+            let s = json.as_str().unwrap().to_string();
+            Ok(Self::String(s))
+        }
+        else if json.is_object() {
+            let store = &json["store"];
+            if !store.is_string() {
+                anyhow::bail!("Identifier missing store or is not correct type (string)");
+            }
+            let store = store.as_str().unwrap();
+            let kind = match store {
+                "inputs" => IdentifierKind::Inputs,
+                "outputs" => IdentifierKind::Outputs,
+                "globals" => IdentifierKind::Globals,
+                s => { anyhow::bail!("identifier store wrong value: {s}") }
+            };
+
+
+            let name = &json["name"];
+            if !name.is_string() {
+                anyhow::bail!("Identifier missing name or is not correct type (string)");
+            }
+            let name = name.as_str().unwrap().to_string();
+
+            Ok(Self::Identifier(kind, name))
+        }
+        else if json.is_number() {
+            Ok(Self::Number(json.as_f64().unwrap()))
+        }
+        else if json.is_boolean() {
+            Ok(Self::Bool(json.as_bool().unwrap()))
+        }
+        else {
+            anyhow::bail!("Value expects a json number, string, object, or boolean. Got null, array, or empty.")
+        }
     }
 }
 
@@ -28,8 +69,21 @@ pub enum UnaryOperation {
 }
 
 impl UnaryOperation {
-    pub fn new(json: JsonValue) -> anyhow::Result<Self> {
-        todo!()
+    pub fn new(json: &JsonValue) -> anyhow::Result<Self> {
+        if json.is_string() {
+            let s = json.as_str().unwrap();
+            let rv = match s {
+                "!" | "^" | "not" => Self::Negate,
+                "++" => Self::Increment,
+                "--" => Self::Decrement,
+                s => anyhow::bail!("UnaryOp got invalid value {s}")
+            };
+
+            Ok(rv)
+        }
+        else {
+            anyhow::bail!("operation expects a string")
+        }
     }
 }
 
@@ -47,8 +101,28 @@ pub enum BinaryOperation {
 }
 
 impl BinaryOperation {
-    pub fn new(json: JsonValue) -> anyhow::Result<Self> {
-        todo!()
+    pub fn new(json: &JsonValue) -> anyhow::Result<Self> {
+        if json.is_string() {
+            let s = json.as_str().unwrap();
+            let rv = match s {
+                "+" => Self::Add,
+                "-" => Self::Subtract,
+                "*" => Self::Multiply,
+                "/" => Self::Divide,
+                "<" => Self::LessThan,
+                "<=" => Self::LessThanOrEqual,
+                ">" => Self::GreaterThan,
+                ">=" => Self::GreaterThanOrEqual,
+                "==" => Self::Equal,
+                "!=" => Self::NotEqual,
+                s => anyhow::bail!("BinaryOp got invalid value {s}")
+            };
+
+            Ok(rv)
+        }
+        else {
+            anyhow::bail!("operation expects a string")
+        }
     }
 }
 
@@ -58,7 +132,31 @@ pub enum Expression {
 }
 
 impl Expression {
-    pub fn new(json: JsonValue) -> anyhow::Result<Self> {
+    pub fn new(json: &JsonValue) -> anyhow::Result<Self> {
+        if !json.is_object() {
+            anyhow::bail!("expr expects object")
+        }
+
+        let op = &json["operation"];
+        let left = &json["left"];
+        let rv = if left.is_null() {
+            let value = &json["value"];
+            let value = Value::new(value)?;
+            let op = UnaryOperation::new(op)?;
+            Self::Unary(op, value)
+        }
+        else {
+            let right = &json["right"];
+            let left = Value::new(left)?;
+            let right = Value::new(right)?;
+            let op = BinaryOperation::new(op)?;
+            Self::Binary(op, left, right)
+        };
+
+        Ok(rv)
+    }
+
+    pub fn execute(&self, i: &JsonValue, o: &mut JsonValue, g: &mut JsonValue) -> anyhow::Result<Value> {
         todo!()
     }
 }
