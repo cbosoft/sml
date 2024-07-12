@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::fs::File;
+use std::io::Read;
 
 use json;
 use json::JsonValue;
@@ -43,10 +46,24 @@ impl State {
 pub struct SM {
     states: HashMap<String, State>,
     current_state: String,
+    globals: JsonValue,
 }
 
 impl SM {
-    pub fn new(src: &str) -> anyhow::Result<Self> {
+    pub fn new(states: HashMap<String, State>, current_state: String) -> Self {
+        let globals = json::object! { };
+        Self { states, current_state, globals }
+    }
+
+    pub fn from_file<P: Into<PathBuf>>(path: P) -> anyhow::Result<Self> {
+        let path: PathBuf = path.into();
+        let mut source = String::new();
+        let mut f = File::options().read(true).open(path)?;
+        let _ = f.read_to_string(&mut source)?;
+        Self::from_src(&source)
+    }
+
+    pub fn from_src(src: &str) -> anyhow::Result<Self> {
         let json = json::parse(src)?;
         if !json.is_object() {
             return Err(anyhow::anyhow!("json expected to be object"));
@@ -89,7 +106,7 @@ impl SM {
         }
         let current_state = current_state.unwrap();
 
-        Ok(Self { states, current_state })
+        Ok(Self::new(states, current_state))
     }
 
     // Use `DeserializeOwned` instead `Deserialize` and dealing with lifetime issues
@@ -98,13 +115,13 @@ impl SM {
         let i = serde_json::to_string(&i)?;
         let i = json::parse(&i)?;
         let state = self.states.get(&self.current_state).unwrap();
-        let o = Self::run_state(state, i)?;
+        let o = Self::run_state(state, i, &mut self.globals)?;
         let o = o.to_string();
         let o: O = serde_json::from_str(&o)?;
         Ok(o)
     }
 
-    fn run_state(state: &State, i: JsonValue) -> anyhow::Result<JsonValue> {
+    fn run_state(state: &State, i: JsonValue, g: &mut JsonValue) -> anyhow::Result<JsonValue> {
         todo!();
     }
 
