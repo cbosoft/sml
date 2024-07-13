@@ -14,19 +14,18 @@ use crate::state::{State, StateOp};
 type StateRef = Rc<State>;
 
 
+#[derive(Clone)]
 pub struct StateMachine {
-    states: HashMap<String, StateRef>,
-    initial_state: StateRef,
-    current_state: Option<StateRef>,
     globals: JsonValue,
+    states: HashMap<String, StateRef>,
+    current_state: Option<StateRef>,
 }
 
 
 impl StateMachine {
-    pub fn new(states: HashMap<String, StateRef>, initial_state: StateRef) -> Self {
-        let globals = json::object! { };
+    pub fn new(globals: JsonValue, states: HashMap<String, StateRef>, initial_state: StateRef) -> Self {
         let current_state = Some(Rc::clone(&initial_state));
-        Self { states, initial_state, current_state, globals }
+        Self { globals, states, current_state }
     }
 
     pub fn from_file<P: Into<PathBuf>>(path: P) -> anyhow::Result<Self> {
@@ -38,14 +37,17 @@ impl StateMachine {
     }
 
     pub fn from_src(src: &str) -> anyhow::Result<Self> {
-        let json = json::parse(src)?;
-        if !json.is_array() {
+        let machine_json = json::parse(src)?;
+        let globals = machine_json["globals"].clone();
+
+        let states_json = &machine_json["states"];
+        if !states_json.is_array() {
             return Err(anyhow::anyhow!("json expected to be array"));
         }
 
         let mut initial_state = None;
         let mut states = HashMap::new();
-        for state_data in json.members() {
+        for state_data in states_json.members() {
             let state_name = &state_data["name"];
             if !state_name.is_string() {
                 anyhow::bail!("state name should be string");
@@ -94,7 +96,7 @@ impl StateMachine {
         }
         let initial_state = initial_state.unwrap();
         let initial_state = Rc::clone(states.get(&initial_state).unwrap());
-        Ok(Self::new(states, initial_state))
+        Ok(Self::new(globals, states, initial_state))
     }
 
     fn get_state(&self, name: &String) -> anyhow::Result<StateRef> {
