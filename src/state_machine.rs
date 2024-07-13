@@ -1,28 +1,31 @@
-use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::fs::File;
 use std::io::Read;
+use std::rc::Rc;
 
+use serde::{Serialize, de::DeserializeOwned};
 use json::JsonValue;
 
 use crate::expression::Expression;
 use crate::state::{State, StateOp};
 
 
+type StateRef = Rc<State>;
+
+
 pub struct StateMachine {
-    // Might need RefCell here
-    states: HashMap<String, State>,
-    initial_state: String,
-    current_state: Option<String>, // if using RC<RefCell<>>, then can put the state directly here
-                                   // instead of the name...
+    states: HashMap<String, StateRef>,
+    initial_state: StateRef,
+    current_state: Option<StateRef>,
     globals: JsonValue,
 }
 
+
 impl StateMachine {
-    pub fn new(states: HashMap<String, State>, initial_state: String) -> Self {
+    pub fn new(states: HashMap<String, StateRef>, initial_state: StateRef) -> Self {
         let globals = json::object! { };
-        let current_state = Some(initial_state.clone());
+        let current_state = Some(Rc::clone(&initial_state));
         Self { states, initial_state, current_state, globals }
     }
 
@@ -52,10 +55,6 @@ impl StateMachine {
             if initial_state.is_none() {
                 initial_state = Some(state_name.clone());
             }
-            let default_next = match state_data["default_next"].as_str() {
-                Some(s) => Some(s.to_string()),
-                None => None,
-            };
 
             let head = &state_data["head"];
             if !head.is_array() {
@@ -85,7 +84,8 @@ impl StateMachine {
                 body_parsed.push((condition, expressions, state_op));
             }
             
-            let state = State::new(default_next, head, body_parsed);
+            let state = State::new(state_name.clone(), head, body_parsed);
+            let state = Rc::new(state);
             states.insert(state_name, state);
         }
 
@@ -93,23 +93,19 @@ impl StateMachine {
             return Err(anyhow::anyhow!("no states defined!"));
         }
         let initial_state = initial_state.unwrap();
-
+        let initial_state = Rc::clone(states.get(&initial_state).unwrap());
         Ok(Self::new(states, initial_state))
     }
 
-
-    fn get_current_state(&self) -> anyhow::Result<&State> {
-        let state_name = match self.current_state.as_ref() {
-            Some(s) => s,
-            None => { return Err(anyhow::anyhow!("no current state! state machine is ended.")); },
-        };
-
-        let state = self.states.get(state_name);
-
-        match state {
-            None => Err(anyhow::anyhow!("state {state_name} not found")),
-            Some(state) => Ok(state),
+    fn get_state(&self, name: &String) -> anyhow::Result<StateRef> {
+        match self.states.get(name) {
+            Some(state) => Ok(Rc::clone(state)),
+            None => Err(anyhow::anyhow!("state {name} does not exist"))
         }
+    }
+
+    pub fn current_state(&self) -> String {
+        self.current_state.as_ref().unwrap().name().clone()
     }
 
     // Use `DeserializeOwned` instead `Deserialize` and dealing with lifetime issues
@@ -119,10 +115,8 @@ impl StateMachine {
             Some(current_state) => {
                 let i = serde_json::to_string(&i)?;
                 let i = json::parse(&i)?;
-                let state = self.get_current_state()?; // might need to look at RefCell for this, need
-                                                       // immutable access to the state but don't
-                                                       // want to have to clone it
-                let (o, state_op) = state.run(&i, &mut self.globals)?;
+                let state = Rc::clone(&current_state);
+                let (o, state_op) = (*state).run(&i, &mut self.globals)?;
                 let o = o.to_string();
                 let o: O = serde_json::from_str(&o)?;
                 (Some(o), state_op)
@@ -135,7 +129,10 @@ impl StateMachine {
         match state_op {
             StateOp::Stay => {},
             StateOp::End => { self.current_state = None; },
-            StateOp::ChangeTo(state_name) => { self.current_state.insert(state_name); },
+            StateOp::ChangeTo(state_name) => {
+                let state = self.get_state(&state_name)?;
+                let _ = self.current_state.insert(state);
+            },
         }
 
         Ok(rv)
