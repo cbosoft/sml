@@ -3,7 +3,7 @@ use json::JsonValue;
 use crate::expression::Expression;
 
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum StateOp {
     Stay,
     ChangeTo(String),
@@ -30,8 +30,7 @@ impl StateOp {
 
 
 pub struct State {
-    /// Name of state which is the default successor to this one
-    default_next: Option<String>,
+    name: String,
 
     /// Expressions evaluated when this state is visited
     head: Vec<Expression>,
@@ -42,8 +41,12 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(default_next: Option<String>, head: Vec<Expression>, body: Vec<(Expression, Vec<Expression>, StateOp)>) -> Self {
-        Self { default_next, head, body }
+    pub fn new(name: String, head: Vec<Expression>, body: Vec<(Expression, Vec<Expression>, StateOp)>) -> Self {
+        Self { name, head, body }
+    }
+
+    pub fn name(&self) -> &String {
+        &self.name
     }
 
     // return some output if not ended
@@ -54,6 +57,18 @@ impl State {
             expr.evaluate(i, &mut o, g)?;
         }
 
-        todo!();
+        let mut state_op = StateOp::Stay;
+        for (cond, branch_body, branch_state_op) in &self.body {
+            let v = cond.evaluate(i, &mut o, g)?;
+            if v.as_bool() {
+                for expr in branch_body {
+                    expr.evaluate(i, &mut o, g)?;
+                }
+                state_op = branch_state_op.clone();
+                break;
+            }
+        }
+
+        Ok((o, state_op))
     }
 }
