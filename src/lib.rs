@@ -8,12 +8,14 @@ use json::JsonValue;
 use serde::{Serialize, de::DeserializeOwned};
 
 
+#[derive(Debug)]
 pub enum IdentifierStore {
     Inputs,
     Outputs,
     Globals
 }
 
+#[derive(Debug)]
 pub struct Identifier {
     store: IdentifierStore,
     name: String
@@ -47,14 +49,14 @@ impl Identifier {
         todo!();
     }
 
-    pub fn set(&self, o: &mut JsonValue, g: &mut JsonValue) -> anyhow::Result<()> {
+    pub fn set(&self, o: &mut JsonValue, g: &mut JsonValue, v: &Value) -> anyhow::Result<()> {
         todo!();
         Ok(())
     }
 }
 
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     String(String),
     Number(f64),
@@ -87,6 +89,7 @@ impl Value {
     }
 }
 
+#[derive(Debug)]
 pub enum UnaryOperation {
     // Arithmetic
     Increment,
@@ -119,7 +122,10 @@ impl UnaryOperation {
     }
 }
 
+#[derive(Debug)]
 pub enum BinaryOperation {
+    Assign,
+
     // Arithmetic
     Add,
     Subtract,
@@ -145,6 +151,8 @@ impl BinaryOperation {
         if json.is_string() {
             let s = json.as_str().unwrap();
             let rv = match s {
+                "=" => Self::Assign,
+
                 // Arithmetic
                 "+" => Self::Add,
                 "-" => Self::Subtract,
@@ -175,10 +183,19 @@ impl BinaryOperation {
     }
 
     pub fn apply(&self, left: &Value, right: &Value) -> anyhow::Result<Value> {
-        todo!();
+        match self {
+            Self::Add => {
+                match (left, right) {
+                    (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left + right)),
+                    _ => todo!()
+                }
+            },
+            _ => todo!()
+        }
     }
 }
 
+#[derive(Debug)]
 pub enum Expression {
     Value(Value),
     Identifier(Identifier),
@@ -202,11 +219,13 @@ impl Expression {
             "identifier" => Self::new_identifier(json),
             "unary op" => Self::new_unaryop(json),
             "binary op" => Self::new_binaryop(json),
+            s => anyhow::bail!("unhandled expr kind {s}"),
         }
     }
 
     pub fn new_value(json: &JsonValue) -> anyhow::Result<Self> {
-        let value = Value::new(json)?;
+        let value = &json["value"];
+        let value = Value::new(value)?;
         Ok(Self::Value(value))
     }
 
@@ -245,9 +264,20 @@ impl Expression {
                 op.apply(&operand)?
             },
             Self::Binary(op, left, right) => {
-                let left = left.evaluate(i, o, g)?;
                 let right = right.evaluate(i, o, g)?;
-                op.apply(&left, &right)?
+                if matches!(op, BinaryOperation::Assign) {
+                    match &**left {
+                        Self::Identifier(identifier) => {
+                            identifier.set(o, g, &right)?
+                        },
+                        _ => anyhow::bail!("can only assign to identifier, got {left:?}")
+                    }
+                    right
+                }
+                else {
+                    let left = left.evaluate(i, o, g)?;
+                    op.apply(&left, &right)?
+                }
             }
         };
 
@@ -276,7 +306,12 @@ impl State {
     pub fn run(&self, i: &JsonValue, g: &mut JsonValue) -> anyhow::Result<JsonValue> {
         let mut o = json::object! { };
 
+        for expr in &self.head {
+            expr.evaluate(i, &mut o, g)?;
+        }
+
         todo!();
+
 
         Ok(o)
     }
@@ -377,7 +412,20 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+        let expr_src = r#"{ "kind": "binary op", "operation": "+", "left": { "kind": "value", "value": 5 }, "right": { "kind": "value", "value": 5 } }"#;
+        let expr_json = json::parse(expr_src).unwrap();
+        let expr = Expression::new(&expr_json).unwrap();
+
+        let i = json::object! { };
+        let mut o = json::object! { };
+        let mut g = json::object! { };
+        let result = expr.evaluate(&i, &mut o, &mut g).unwrap();
+
+        match result {
+            Value::Number(v) => {
+                assert!( (v - 10.0).abs() < 1e-6 )
+            },
+            _ => panic!(),
+        }
     }
 }
