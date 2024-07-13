@@ -1,0 +1,4 @@
+[
+  { "name": "A", "head": [], "body": [{ "condition": { "kind": "value", "value": true }, "expressions": [], "state op": "changeto B" }] },
+  { "name": "B", "head": [], "body": [{ "condition": { "kind": "value", "value": true }, "expressions": [], "state op": "changeto A" }] }
+]
