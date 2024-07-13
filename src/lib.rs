@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{any, collections::HashMap};
 use std::path::PathBuf;
 use std::fs::File;
 use std::io::Read;
@@ -8,18 +8,57 @@ use json::JsonValue;
 use serde::{Serialize, de::DeserializeOwned};
 
 
-pub enum IdentifierKind {
+pub enum IdentifierStore {
     Inputs,
     Outputs,
     Globals
 }
 
+pub struct Identifier {
+    store: IdentifierStore,
+    name: String
+}
 
+impl Identifier {
+    pub fn new(json: &JsonValue) -> anyhow::Result<Self> {
+        let store = &json["store"];
+        if !store.is_string() {
+            anyhow::bail!("Identifier missing store or is not correct type (string)");
+        }
+        let store = store.as_str().unwrap();
+        let store = match store {
+            "inputs" => IdentifierStore::Inputs,
+            "outputs" => IdentifierStore::Outputs,
+            "globals" => IdentifierStore::Globals,
+            s => { anyhow::bail!("identifier store wrong value: {s}") }
+        };
+
+
+        let name = &json["name"];
+        if !name.is_string() {
+            anyhow::bail!("Identifier missing name or is not correct type (string)");
+        }
+        let name = name.as_str().unwrap().to_string();
+
+        Ok(Self { store, name })
+    }
+
+    pub fn get(&self, i: &JsonValue, o: &JsonValue, g: &JsonValue) -> anyhow::Result<Value> {
+        todo!();
+    }
+
+    pub fn set(&self, o: &mut JsonValue, g: &mut JsonValue) -> anyhow::Result<()> {
+        todo!();
+        Ok(())
+    }
+}
+
+
+#[derive(Clone)]
 pub enum Value {
-    Identifier(IdentifierKind, String),
     String(String),
     Number(f64),
-    Bool(bool)
+    Bool(bool),
 }
 
 impl Value {
@@ -28,28 +67,6 @@ impl Value {
             let s = json.as_str().unwrap().to_string();
             Ok(Self::String(s))
         }
-        else if json.is_object() {
-            let store = &json["store"];
-            if !store.is_string() {
-                anyhow::bail!("Identifier missing store or is not correct type (string)");
-            }
-            let store = store.as_str().unwrap();
-            let kind = match store {
-                "inputs" => IdentifierKind::Inputs,
-                "outputs" => IdentifierKind::Outputs,
-                "globals" => IdentifierKind::Globals,
-                s => { anyhow::bail!("identifier store wrong value: {s}") }
-            };
-
-
-            let name = &json["name"];
-            if !name.is_string() {
-                anyhow::bail!("Identifier missing name or is not correct type (string)");
-            }
-            let name = name.as_str().unwrap().to_string();
-
-            Ok(Self::Identifier(kind, name))
-        }
         else if json.is_number() {
             Ok(Self::Number(json.as_f64().unwrap()))
         }
@@ -57,15 +74,26 @@ impl Value {
             Ok(Self::Bool(json.as_bool().unwrap()))
         }
         else {
-            anyhow::bail!("Value expects a json number, string, object, or boolean. Got null, array, or empty.")
+            anyhow::bail!("Value expects a json number, string, or boolean. Got null, object, array, or empty.")
+        }
+    }
+
+    pub fn as_bool(&self) -> bool {
+        match self {
+            Self::Bool(v) => *v,
+            Self::Number(v) => *v != 0.0,
+            Self::String(v) => v.is_empty(),
         }
     }
 }
 
 pub enum UnaryOperation {
-    Negate,
+    // Arithmetic
     Increment,
     Decrement,
+
+    // Boolean
+    Negate,
 }
 
 impl UnaryOperation {
@@ -73,7 +101,7 @@ impl UnaryOperation {
         if json.is_string() {
             let s = json.as_str().unwrap();
             let rv = match s {
-                "!" | "^" | "not" => Self::Negate,
+                "not" => Self::Negate,
                 "++" => Self::Increment,
                 "--" => Self::Decrement,
                 s => anyhow::bail!("UnaryOp got invalid value {s}")
@@ -85,19 +113,31 @@ impl UnaryOperation {
             anyhow::bail!("operation expects a string")
         }
     }
+
+    pub fn apply(&self, operand: &Value) -> anyhow::Result<Value> {
+        todo!();
+    }
 }
 
 pub enum BinaryOperation {
+    // Arithmetic
     Add,
     Subtract,
     Divide,
     Multiply,
+    Power,
+
+    // Comparison and equality
     LessThan,
     LessThanOrEqual,
     GreaterThan,
     GreaterThanOrEqual,
     Equal,
-    NotEqual
+    NotEqual,
+
+    // Boolean
+    And,
+    Or,
 }
 
 impl BinaryOperation {
@@ -105,16 +145,25 @@ impl BinaryOperation {
         if json.is_string() {
             let s = json.as_str().unwrap();
             let rv = match s {
+                // Arithmetic
                 "+" => Self::Add,
                 "-" => Self::Subtract,
                 "*" => Self::Multiply,
                 "/" => Self::Divide,
+                "**" | "^" => Self::Power,
+
+                // Comparison and equality
                 "<" => Self::LessThan,
                 "<=" => Self::LessThanOrEqual,
                 ">" => Self::GreaterThan,
                 ">=" => Self::GreaterThanOrEqual,
                 "==" => Self::Equal,
                 "!=" => Self::NotEqual,
+
+                // Boolean
+                "and" => Self::And,
+                "or" => Self::Or,
+
                 s => anyhow::bail!("BinaryOp got invalid value {s}")
             };
 
@@ -124,11 +173,17 @@ impl BinaryOperation {
             anyhow::bail!("operation expects a string")
         }
     }
+
+    pub fn apply(&self, left: &Value, right: &Value) -> anyhow::Result<Value> {
+        todo!();
+    }
 }
 
 pub enum Expression {
-    Unary(UnaryOperation, Value),
-    Binary(BinaryOperation, Value, Value),
+    Value(Value),
+    Identifier(Identifier),
+    Unary(UnaryOperation, Box<Expression>),
+    Binary(BinaryOperation, Box<Expression>, Box<Expression>),
 }
 
 impl Expression {
@@ -137,27 +192,66 @@ impl Expression {
             anyhow::bail!("expr expects object")
         }
 
-        let op = &json["operation"];
-        let left = &json["left"];
-        let rv = if left.is_null() {
-            let value = &json["value"];
-            let value = Value::new(value)?;
-            let op = UnaryOperation::new(op)?;
-            Self::Unary(op, value)
+        let kind = &json["kind"];
+        if !kind.is_string() {
+            anyhow::bail!("expr expects key kind value to be string")
         }
-        else {
-            let right = &json["right"];
-            let left = Value::new(left)?;
-            let right = Value::new(right)?;
-            let op = BinaryOperation::new(op)?;
-            Self::Binary(op, left, right)
+
+        match kind.as_str().unwrap() {
+            "value" => Self::new_value(json),
+            "identifier" => Self::new_identifier(json),
+            "unary op" => Self::new_unaryop(json),
+            "binary op" => Self::new_binaryop(json),
+        }
+    }
+
+    pub fn new_value(json: &JsonValue) -> anyhow::Result<Self> {
+        let value = Value::new(json)?;
+        Ok(Self::Value(value))
+    }
+
+    pub fn new_identifier(json: &JsonValue) -> anyhow::Result<Self> {
+        let identifier = Identifier::new(json)?;
+        Ok(Self::Identifier(identifier))
+    }
+
+    pub fn new_unaryop(json: &JsonValue) -> anyhow::Result<Self> {
+        let op = &json["operation"];
+        let op = UnaryOperation::new(op)?;
+        let operand = &json["operand"];
+        let operand = Expression::new(operand)?;
+        let operand = Box::new(operand);
+        Ok(Self::Unary(op, operand))
+    }
+
+    pub fn new_binaryop(json: &JsonValue) -> anyhow::Result<Self> {
+        let op = &json["operation"];
+        let op = BinaryOperation::new(op)?;
+        let left = &json["left"];
+        let left = Expression::new(left)?;
+        let left = Box::new(left);
+        let right = &json["right"];
+        let right = Expression::new(right)?;
+        let right = Box::new(right);
+        Ok(Self::Binary(op, left, right))
+    }
+
+    pub fn evaluate(&self, i: &JsonValue, o: &mut JsonValue, g: &mut JsonValue) -> anyhow::Result<Value> {
+        let rv = match self {
+            Self::Value(value) => value.clone(),
+            Self::Identifier(identifier) => identifier.get(i, o, g)?,
+            Self::Unary(op, operand) => {
+                let operand = operand.evaluate(i, o, g)?;
+                op.apply(&operand)?
+            },
+            Self::Binary(op, left, right) => {
+                let left = left.evaluate(i, o, g)?;
+                let right = right.evaluate(i, o, g)?;
+                op.apply(&left, &right)?
+            }
         };
 
         Ok(rv)
-    }
-
-    pub fn execute(&self, i: &JsonValue, o: &mut JsonValue, g: &mut JsonValue) -> anyhow::Result<Value> {
-        todo!()
     }
 }
 
@@ -177,6 +271,14 @@ pub struct State {
 impl State {
     pub fn new(default: String, head: Vec<Expression>, body: Vec<(Expression, Vec<Expression>)>) -> Self {
         Self { default, head, body }
+    }
+
+    pub fn run(&self, i: &JsonValue, g: &mut JsonValue) -> anyhow::Result<JsonValue> {
+        let mut o = json::object! { };
+
+        todo!();
+
+        Ok(o)
     }
 }
 
@@ -220,7 +322,7 @@ impl SM {
             if !head.is_array() {
                 return Err(anyhow::anyhow!("head expected to be array"));
             }
-            let head: Result<Vec<_>, _> = head.members().map(|j| Expression::new(j.clone())).collect();
+            let head: Result<Vec<_>, _> = head.members().map(|j| Expression::new(j)).collect();
             let head = head?;
 
             let body = &state_data["body"];
@@ -229,10 +331,10 @@ impl SM {
             }
             let mut body_parsed = Vec::new();
             for item in body.members() {
-                let condition = item["condition"].clone();
+                let condition = &item["condition"];
                 let condition = Expression::new(condition)?;
-                let expressions = item["expressions"].clone();
-                let expressions: Result<Vec<_>, _> = expressions.members().map(|j| Expression::new(j.clone())).collect();
+                let expressions = &item["expressions"];
+                let expressions: Result<Vec<_>, _> = expressions.members().map(|j| Expression::new(j)).collect();
                 let expressions = expressions?;
                 body_parsed.push((condition, expressions));
             }
@@ -255,16 +357,11 @@ impl SM {
         let i = serde_json::to_string(&i)?;
         let i = json::parse(&i)?;
         let state = self.states.get(&self.current_state).unwrap();
-        let o = Self::run_state(state, i, &mut self.globals)?;
+        let o = state.run(&i, &mut self.globals)?;
         let o = o.to_string();
         let o: O = serde_json::from_str(&o)?;
         Ok(o)
     }
-
-    fn run_state(state: &State, i: JsonValue, g: &mut JsonValue) -> anyhow::Result<JsonValue> {
-        todo!();
-    }
-
 }
 
 
