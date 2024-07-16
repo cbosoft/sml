@@ -148,4 +148,10 @@ impl StateMachine {
 
         Ok(rv)
     }
+
+    pub fn globals<G: DeserializeOwned>(&self) -> SML_Result<G> {
+        let g = self.globals.to_string();
+        let g: G = serde_json::from_str(&g)?;
+        Ok(g)
+    }
 }
