@@ -22,6 +22,15 @@ pub enum SML_Error {
     #[error("Nonexistant state {0}")]
     NonexistantState(String),
 
+    #[error("Identifier \"{0}\" doesn't refer to existing value.")]
+    IdentifierNameError(String),
+
+    #[error("Identifier error. {0}")]
+    IdentifierError(String),
+
+    #[error("Input store is immutable and cannot be written to.")]
+    InputsWriteError,
+
 }
 
 
