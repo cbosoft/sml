@@ -85,8 +85,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "sml"
-version = "0.1.0"
+name = "shakemyleg"
+version = "1.0.0"
 dependencies = [
  "itertools",
  "json",
