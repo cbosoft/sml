@@ -1,5 +1,7 @@
 use json::JsonValue;
 
+use crate::error::{SML_Result, SML_Error};
+
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -9,7 +11,7 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn new(json: &JsonValue) -> anyhow::Result<Self> {
+    pub fn new(json: &JsonValue) -> SML_Result<Self> {
         if json.is_string() {
             let s = json.as_str().unwrap().to_string();
             Ok(Self::String(s))
@@ -21,7 +23,7 @@ impl Value {
             Ok(Self::Bool(json.as_bool().unwrap()))
         }
         else {
-            anyhow::bail!("Value expects a json number, string, or boolean. Got null, object, array, or empty.")
+            Err(SML_Error::JsonFormatError("Value expects a json number, string, or boolean. Got null, object, array, or empty.".to_string()))
         }
     }
 

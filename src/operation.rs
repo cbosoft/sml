@@ -1,5 +1,6 @@
 use json::JsonValue;
 
+use crate::error::{SML_Error, SML_Result};
 use crate::value::Value;
 
 
@@ -15,29 +16,29 @@ pub enum UnaryOperation {
 
 
 impl UnaryOperation {
-    pub fn new(json: &JsonValue) -> anyhow::Result<Self> {
+    pub fn new(json: &JsonValue) -> SML_Result<Self> {
         if json.is_string() {
             let s = json.as_str().unwrap();
             let rv = match s {
                 "not" => Self::Negate,
                 "++" => Self::Increment,
                 "--" => Self::Decrement,
-                s => anyhow::bail!("UnaryOp got invalid value {s}")
+                s => { return Err(SML_Error::JsonFormatError(format!("UnaryOp got invalid value {s}"))); }
             };
 
             Ok(rv)
         }
         else {
-            anyhow::bail!("operation expects a string")
+            return Err(SML_Error::JsonFormatError("Operation should be a string value.".to_string()));
         }
     }
 
-    pub fn apply(&self, operand: &Value) -> anyhow::Result<Value> {
+    pub fn apply(&self, operand: &Value) -> SML_Result<Value> {
         match self {
             Self::Negate => {
                 match operand {
                     Value::Bool(b) => Ok(Value::Bool(!b)),
-                    _ => Err(anyhow::anyhow!("negation only valid on boolean"))
+                    _ => Err(SML_Error::BadOperation("Negation only valid for boolean operands.".to_string()))
                 }
             },
             _ => {
@@ -49,7 +50,7 @@ impl UnaryOperation {
                             Self::Negate => panic!(),
                         }
                     },
-                    _ => Err(anyhow::anyhow!("incr/decrement only valid for numbers"))
+                    _ => Err(SML_Error::BadOperation("Incr/decrement only valid for numerical operands.".to_string()))
                 }
             }
         }
@@ -81,7 +82,7 @@ pub enum BinaryOperation {
 }
 
 impl BinaryOperation {
-    pub fn new(json: &JsonValue) -> anyhow::Result<Self> {
+    pub fn new(json: &JsonValue) -> SML_Result<Self> {
         if json.is_string() {
             let s = json.as_str().unwrap();
             let rv = match s {
@@ -106,17 +107,17 @@ impl BinaryOperation {
                 "and" => Self::And,
                 "or" => Self::Or,
 
-                s => anyhow::bail!("BinaryOp got invalid value {s}")
+                s => { return Err(SML_Error::JsonFormatError(format!("BinaryOp got invalid value {s}"))); }
             };
 
             Ok(rv)
         }
         else {
-            anyhow::bail!("operation expects a string")
+            return Err(SML_Error::JsonFormatError("Operation should be a string value.".to_string()));
         }
     }
 
-    pub fn apply(&self, left: &Value, right: &Value) -> anyhow::Result<Value> {
+    pub fn apply(&self, left: &Value, right: &Value) -> SML_Result<Value> {
         match self {
             Self::Assign => {
                 panic!("assign handled elsewhere");
@@ -126,31 +127,31 @@ impl BinaryOperation {
             Self::Add => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left + right)),
-                    _ => Err(anyhow::anyhow!("arithmetic only valid on numbers"))
+                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for boolean operands.".to_string()))
                 }
             },
             Self::Subtract => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left - right)),
-                    _ => Err(anyhow::anyhow!("arithmetic only valid on numbers"))
+                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for boolean operands.".to_string()))
                 }
             },
             Self::Multiply => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left * right)),
-                    _ => Err(anyhow::anyhow!("arithmetic only valid on numbers"))
+                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for boolean operands.".to_string()))
                 }
             },
             Self::Divide => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left / right)),
-                    _ => Err(anyhow::anyhow!("arithmetic only valid on numbers"))
+                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for boolean operands.".to_string()))
                 }
             },
             Self::Power => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left.powf(*right))),
-                    _ => Err(anyhow::anyhow!("arithmetic only valid on numbers"))
+                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for boolean operands.".to_string()))
                 }
             },
 
@@ -158,25 +159,25 @@ impl BinaryOperation {
             Self::LessThan => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left < right)),
-                    _ => Err(anyhow::anyhow!("Comparison only valid on numbers"))
+                    _ => Err(SML_Error::BadOperation("Comparison only valid for boolean operands.".to_string()))
                 }
             },
             Self::LessThanOrEqual => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left <= right)),
-                    _ => Err(anyhow::anyhow!("Comparison only valid on numbers"))
+                    _ => Err(SML_Error::BadOperation("Comparison only valid for boolean operands.".to_string()))
                 }
             },
             Self::GreaterThan => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left > right)),
-                    _ => Err(anyhow::anyhow!("Comparison only valid on numbers"))
+                    _ => Err(SML_Error::BadOperation("Comparison only valid for boolean operands.".to_string()))
                 }
             },
             Self::GreaterThanOrEqual => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left >= right)),
-                    _ => Err(anyhow::anyhow!("Comparison only valid on numbers"))
+                    _ => Err(SML_Error::BadOperation("Comparison only valid for boolean operands.".to_string()))
                 }
             },
 
@@ -186,7 +187,7 @@ impl BinaryOperation {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Bool( (left - right).abs() < 1e-5 )),
                     (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(*left && *right)),
                     (Value::String(left), Value::String(right)) => Ok(Value::Bool(*left == *right)),
-                    _ => Err(anyhow::anyhow!("Equality check only valid between values of the same types"))
+                    _ => Err(SML_Error::BadOperation("Comparison only valid for boolean operands.".to_string()))
                 }
             },
             Self::NotEqual => {
@@ -194,7 +195,7 @@ impl BinaryOperation {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Bool( (left - right).abs() > 1e-5 )),
                     (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(!(*left && *right))),
                     (Value::String(left), Value::String(right)) => Ok(Value::Bool(*left != *right)),
-                    _ => Err(anyhow::anyhow!("Equality check only valid between values of the same types"))
+                    _ => Err(SML_Error::BadOperation("Comparison only valid for boolean operands.".to_string()))
                 }
             },
 
@@ -202,13 +203,13 @@ impl BinaryOperation {
             Self::And => {
                 match (left, right) {
                     (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(*left && *right)),
-                    _ => Err(anyhow::anyhow!("boolean ops only valid on boolean"))
+                    _ => Err(SML_Error::BadOperation("Boolean ops only valid for boolean operands.".to_string()))
                 }
             },
             Self::Or => {
                 match (left, right) {
                     (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(*left || *right)),
-                    _ => Err(anyhow::anyhow!("boolean ops only valid on boolean"))
+                    _ => Err(SML_Error::BadOperation("Boolean ops only valid for boolean operands.".to_string()))
                 }
             },
         }

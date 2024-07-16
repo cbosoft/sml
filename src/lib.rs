@@ -1,3 +1,4 @@
+mod error;
 mod value;
 mod identifier;
 mod operation;

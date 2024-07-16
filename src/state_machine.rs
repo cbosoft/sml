@@ -9,6 +9,7 @@ use json::JsonValue;
 
 use crate::expression::Expression;
 use crate::state::{State, StateOp};
+use crate::error::{SML_Error, SML_Result};
 
 
 type StateRef = Rc<State>;
@@ -28,14 +29,14 @@ impl StateMachine {
         Self { globals, states, current_state }
     }
 
-    pub fn reinit<G: Serialize>(&mut self, g: G) -> anyhow::Result<()> {
+    pub fn reinit<G: Serialize>(&mut self, g: G) -> SML_Result<()> {
         let s = serde_json::to_string(&g)?;
         let j = json::parse(&s)?;
         self.globals = j;
         Ok(())
     }
 
-    pub fn from_file<P: Into<PathBuf>>(path: P) -> anyhow::Result<Self> {
+    pub fn from_file<P: Into<PathBuf>>(path: P) -> SML_Result<Self> {
         let path: PathBuf = path.into();
         let mut source = String::new();
         let mut f = File::options().read(true).open(path)?;
@@ -43,13 +44,13 @@ impl StateMachine {
         Self::from_src(&source)
     }
 
-    pub fn from_src(src: &str) -> anyhow::Result<Self> {
+    pub fn from_src(src: &str) -> SML_Result<Self> {
         let machine_json = json::parse(src)?;
         let globals = machine_json["globals"].clone();
 
         let states_json = &machine_json["states"];
         if !states_json.is_array() {
-            return Err(anyhow::anyhow!("json expected to be array"));
+            return Err(SML_Error::JsonFormatError("JSON .['states'] needs to be array".to_string()));
         }
 
         let mut initial_state = None;
@@ -57,7 +58,7 @@ impl StateMachine {
         for state_data in states_json.members() {
             let state_name = &state_data["name"];
             if !state_name.is_string() {
-                anyhow::bail!("state name should be string");
+                return Err(SML_Error::JsonFormatError(format!("JSON .['states'][]['state_name'] needs to be string, got {state_name:?}")));
             }
             let state_name = state_name.as_str().unwrap().to_string();
 
@@ -67,14 +68,14 @@ impl StateMachine {
 
             let head = &state_data["head"];
             if !head.is_array() {
-                return Err(anyhow::anyhow!("head expected to be array"));
+                return Err(SML_Error::JsonFormatError(format!("JSON .['states'][]['head'] needs to be array of expressions.")));
             }
             let head: Result<Vec<_>, _> = head.members().map(|j| Expression::new(j)).collect();
             let head = head?;
 
             let body = &state_data["body"];
             if !body.is_array() {
-                return Err(anyhow::anyhow!("body expected to be object"));
+                return Err(SML_Error::JsonFormatError(format!("JSON .['states'][]['body'] needs to be object.")));
             }
             let mut body_parsed = Vec::new();
             for item in body.members() {
@@ -87,7 +88,7 @@ impl StateMachine {
 
                 let state_op = &item["state op"];
                 if !state_op.is_string() {
-                    anyhow::bail!("state op is expected to be string");
+                    return Err(SML_Error::JsonFormatError(format!("JSON .['states'][]['state op'] needs to be string.")));
                 }
                 let state_op = StateOp::from_str(state_op.as_str().unwrap())?;
                 body_parsed.push((condition, expressions, state_op));
@@ -99,17 +100,17 @@ impl StateMachine {
         }
 
         if initial_state.is_none() {
-            return Err(anyhow::anyhow!("no states defined!"));
+            return Err(SML_Error::JsonFormatError("JSON .['states'] is empty: no states defined!".to_string()));
         }
         let initial_state = initial_state.unwrap();
         let initial_state = Rc::clone(states.get(&initial_state).unwrap());
         Ok(Self::new(globals, states, initial_state))
     }
 
-    fn get_state(&self, name: &String) -> anyhow::Result<StateRef> {
+    fn get_state(&self, name: &String) -> SML_Result<StateRef> {
         match self.states.get(name) {
             Some(state) => Ok(Rc::clone(state)),
-            None => Err(anyhow::anyhow!("state {name} does not exist"))
+            None => Err(SML_Error::NonexistantState(name.clone()))
         }
     }
 
@@ -119,7 +120,7 @@ impl StateMachine {
 
     // Use `DeserializeOwned` instead `Deserialize` and dealing with lifetime issues
     // https://users.rust-lang.org/t/lifetime-confusion-with-function-parameter-serde-deserialize/76842
-    pub fn run<I: Serialize, O: DeserializeOwned>(&mut self, i: I) -> anyhow::Result<Option<O>> {
+    pub fn run<I: Serialize, O: DeserializeOwned>(&mut self, i: I) -> SML_Result<Option<O>> {
         let (rv, state_op) = match &self.current_state {
             Some(current_state) => {
                 let i = serde_json::to_string(&i)?;

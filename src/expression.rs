@@ -1,5 +1,6 @@
 use json::JsonValue;
 
+use crate::error::{SML_Error, SML_Result};
 use crate::value::Value;
 use crate::identifier::Identifier;
 use crate::operation::{UnaryOperation, BinaryOperation};
@@ -14,14 +15,14 @@ pub enum Expression {
 }
 
 impl Expression {
-    pub fn new(json: &JsonValue) -> anyhow::Result<Self> {
+    pub fn new(json: &JsonValue) -> SML_Result<Self> {
         if !json.is_object() {
-            anyhow::bail!("expr expects object")
+            return Err(SML_Error::JsonFormatError("JSON expr is expected to be object.".to_string()));
         }
 
         let kind = &json["kind"];
         if !kind.is_string() {
-            anyhow::bail!("expr expects key kind value to be string")
+            return Err(SML_Error::JsonFormatError("JSON expr['kind'] is expected to be string.".to_string()));
         }
 
         match kind.as_str().unwrap() {
@@ -29,22 +30,22 @@ impl Expression {
             "identifier" => Self::new_identifier(json),
             "unary op" => Self::new_unaryop(json),
             "binary op" => Self::new_binaryop(json),
-            s => anyhow::bail!("unhandled expr kind {s}"),
+            s => Err(SML_Error::JsonFormatError(format!("unhandled expr kind {s}"))),
         }
     }
 
-    pub fn new_value(json: &JsonValue) -> anyhow::Result<Self> {
+    pub fn new_value(json: &JsonValue) -> SML_Result<Self> {
         let value = &json["value"];
         let value = Value::new(value)?;
         Ok(Self::Value(value))
     }
 
-    pub fn new_identifier(json: &JsonValue) -> anyhow::Result<Self> {
+    pub fn new_identifier(json: &JsonValue) -> SML_Result<Self> {
         let identifier = Identifier::new(json)?;
         Ok(Self::Identifier(identifier))
     }
 
-    pub fn new_unaryop(json: &JsonValue) -> anyhow::Result<Self> {
+    pub fn new_unaryop(json: &JsonValue) -> SML_Result<Self> {
         let op = &json["operation"];
         let op = UnaryOperation::new(op)?;
         let operand = &json["operand"];
@@ -53,7 +54,7 @@ impl Expression {
         Ok(Self::Unary(op, operand))
     }
 
-    pub fn new_binaryop(json: &JsonValue) -> anyhow::Result<Self> {
+    pub fn new_binaryop(json: &JsonValue) -> SML_Result<Self> {
         let op = &json["operation"];
         let op = BinaryOperation::new(op)?;
         let left = &json["left"];
@@ -65,7 +66,7 @@ impl Expression {
         Ok(Self::Binary(op, left, right))
     }
 
-    pub fn evaluate(&self, i: &JsonValue, o: &mut JsonValue, g: &mut JsonValue) -> anyhow::Result<Value> {
+    pub fn evaluate(&self, i: &JsonValue, o: &mut JsonValue, g: &mut JsonValue) -> SML_Result<Value> {
         let rv = match self {
             Self::Value(value) => value.clone(),
             Self::Identifier(identifier) => identifier.get(i, o, g)?,
@@ -80,7 +81,7 @@ impl Expression {
                         Self::Identifier(identifier) => {
                             identifier.set(o, g, &right)?
                         },
-                        _ => anyhow::bail!("can only assign to identifier, got {left:?}")
+                        _ => { return Err(SML_Error::BadOperation(format!("can only assign to identifier, got {left:?}"))); }
                     }
                     right
                 }

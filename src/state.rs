@@ -1,5 +1,6 @@
 use json::JsonValue;
 
+use crate::error::{SML_Error, SML_Result};
 use crate::expression::Expression;
 
 
@@ -12,19 +13,17 @@ pub enum StateOp {
 
 
 impl StateOp {
-    pub fn from_str(s: &str) -> anyhow::Result<Self> {
-        let rv = if let Some(s) = s.strip_prefix("changeto ") {
-            Self::ChangeTo(s.to_string())
+    pub fn from_str(s: &str) -> SML_Result<Self> {
+        if let Some(s) = s.strip_prefix("changeto ") {
+            Ok(Self::ChangeTo(s.to_string()))
         }
         else {
             match s {
-                "stay" => Self::Stay,
-                "end" => Self::End,
-                s => anyhow::bail!("unexpected stateop {s:?}")
+                "stay" => Ok(Self::Stay),
+                "end" => Ok(Self::End),
+                s => Err(SML_Error::JsonFormatError(format!("Unexpected StateOp: {s:?}")))
             }
-        };
-
-        Ok(rv)
+        }
     }
 }
 
@@ -50,7 +49,7 @@ impl State {
     }
 
     // return some output if not ended
-    pub fn run(&self, i: &JsonValue, g: &mut JsonValue) -> anyhow::Result<(JsonValue, StateOp)> {
+    pub fn run(&self, i: &JsonValue, g: &mut JsonValue) -> SML_Result<(JsonValue, StateOp)> {
         let mut o = json::object! { };
 
         for expr in &self.head {
