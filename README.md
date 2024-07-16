@@ -1,4 +1,4 @@
-# State Machine Language
+# SML - ShakeMyLeg, is that a State Machine Language?
 
 A simple state machine definition language and interpreter.
 
