@@ -28,6 +28,13 @@ impl StateMachine {
         Self { globals, states, current_state }
     }
 
+    pub fn reinit<G: Serialize>(&mut self, g: G) -> anyhow::Result<()> {
+        let s = serde_json::to_string(&g)?;
+        let j = json::parse(&s)?;
+        self.globals = j;
+        Ok(())
+    }
+
     pub fn from_file<P: Into<PathBuf>>(path: P) -> anyhow::Result<Self> {
         let path: PathBuf = path.into();
         let mut source = String::new();
