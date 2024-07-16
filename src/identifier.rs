@@ -30,7 +30,7 @@ impl Identifier {
             "inputs" => IdentifierStore::Inputs,
             "outputs" => IdentifierStore::Outputs,
             "globals" => IdentifierStore::Globals,
-            s => { return Err(SML_Error::JsonFormatError(format!("Identifier `store` got unexpected value {store:?}. "))); }
+            s => { return Err(SML_Error::JsonFormatError(format!("Identifier `store` got unexpected value {s:?}. "))); }
         };
 
 
