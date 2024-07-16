@@ -3,7 +3,7 @@ name = "shakemyleg"
 description = "A simple state machine definition language and interpreter. Compiles to JSON as intermediate for some reason."
 repository = "https://github.com/cbosoft/sml"
 license = "MIT"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 authors = ["Christopher Boyle"]
 
