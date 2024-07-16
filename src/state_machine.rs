@@ -48,6 +48,7 @@ impl StateMachine {
         let machine_json = json::parse(src)?;
         let globals = machine_json["globals"].clone();
 
+
         let states_json = &machine_json["states"];
         if !states_json.is_array() {
             return Err(SML_Error::JsonFormatError("JSON .['states'] needs to be array".to_string()));
@@ -75,7 +76,7 @@ impl StateMachine {
 
             let body = &state_data["body"];
             if !body.is_array() {
-                return Err(SML_Error::JsonFormatError(format!("JSON .['states'][]['body'] needs to be object.")));
+                return Err(SML_Error::JsonFormatError(format!("JSON .['states'][]['body'] needs to be array.")));
             }
             let mut body_parsed = Vec::new();
             for item in body.members() {
