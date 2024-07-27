@@ -15,7 +15,7 @@ use crate::error::{SML_Error, SML_Result};
 type StateRef = Rc<State>;
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StateMachine {
     globals: JsonValue,
     states: HashMap<String, StateRef>,

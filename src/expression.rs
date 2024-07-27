@@ -6,7 +6,7 @@ use crate::identifier::Identifier;
 use crate::operation::{UnaryOperation, BinaryOperation};
 
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Expression {
     Value(Value),
     Identifier(Identifier),

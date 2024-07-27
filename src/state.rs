@@ -28,6 +28,7 @@ impl StateOp {
 }
 
 
+#[derive(Clone, Debug)]
 pub struct State {
     name: String,
 

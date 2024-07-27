@@ -1,4 +1,6 @@
-use crate::{error::{SML_Error, SML_Result}, expression::Expression, state::{State, StateOp}, StateMachine};
+use std::{collections::HashMap, rc::Rc};
+
+use crate::{error::{SML_Error, SML_Result}, expression::Expression, state::{State, StateOp}, StateMachine, value::Value};
 
 
 enum CompileState {
@@ -10,12 +12,13 @@ enum CompileState {
 }
 
 
-fn expr_from_str(s: &str) -> Expression {
-    todo!();
+fn expr_from_str(s: &str) -> SML_Result<Expression> {
+    let _ = s;
+    Ok(Expression::Value(Value::Bool(true)))
 }
 
 
-pub fn compile(mut s: String) -> SML_Result<StateMachine> {
+pub fn compile(s: &str) -> SML_Result<StateMachine> {
     let mut c_state_stack = vec![CompileState::TopLevel];
     let lines: Vec<_> = s.lines().collect();
     let mut i = 0usize;
@@ -68,7 +71,7 @@ pub fn compile(mut s: String) -> SML_Result<StateMachine> {
                     }
                     else if let Some(expr_colon) = line.strip_prefix("when ") {
                         if let Some(expr) = expr_colon.strip_suffix(":") {
-                            let cond = expr_from_str(expr);
+                            let cond = expr_from_str(expr)?;
                             state_branch_data = Some((cond, Vec::new(), StateOp::Stay));
                             c_state_stack.push(CompileState::StateBranch);
                         }
@@ -91,7 +94,7 @@ pub fn compile(mut s: String) -> SML_Result<StateMachine> {
             CompileState::Globals => {
                 if line.starts_with(leading_ws.as_ref().unwrap().0) {
                     let line = line.trim_start();
-                    let expr = expr_from_str(line);
+                    let expr = expr_from_str(line)?;
                     globals.push(expr);
                     true
                 }
@@ -103,7 +106,7 @@ pub fn compile(mut s: String) -> SML_Result<StateMachine> {
             CompileState::StateHead => {
                 if line.starts_with(&leading_ws.as_ref().unwrap().1) {
                     let line = line.trim_start();
-                    let expr = expr_from_str(line);
+                    let expr = expr_from_str(line)?;
                     state_data.as_mut().unwrap().1.push(expr);
                     true
                 }
@@ -125,7 +128,7 @@ pub fn compile(mut s: String) -> SML_Result<StateMachine> {
                         state_branch_data.as_mut().unwrap().2 = StateOp::Stay;
                     }
                     else {
-                        let expr = expr_from_str(line);
+                        let expr = expr_from_str(line)?;
                         state_branch_data.as_mut().unwrap().1.push(expr);
                     }
                     true
@@ -147,7 +150,52 @@ pub fn compile(mut s: String) -> SML_Result<StateMachine> {
         }
     }
 
-    todo!();
+    let initial_state = states[0].name().clone();
+    let states_iter = states.into_iter();
+    let mut states = HashMap::new();
+    for state in states_iter {
+        states.insert(state.name().clone(), Rc::new(state));
+    }
+    let initial_state = states.get(&initial_state).unwrap().clone();
+
+    Ok(StateMachine::new(
+        json::object! { },
+        states,
+        initial_state,
+    ))
 }
 
 
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use serde::{Serialize, Deserialize};
+
+    #[derive(Serialize, Deserialize)]
+    struct Foo {
+        pub bar: u64,
+    }
+
+    #[test]
+    fn test_compile() {
+        const SRC: &'static str = r#"
+state A:
+    when true:
+        outputs.bar = inputs.bar
+        changeto B
+state B:
+    when true:
+        outputs.bar = inputs.bar
+        changetoA
+"#;
+        let mut sm = compile(SRC).unwrap();
+
+        eprintln!("{:?}", sm);
+
+        let i = Foo { bar: 0 };
+        let o: Foo = sm.run(i).unwrap().unwrap();
+
+    }
+
+}

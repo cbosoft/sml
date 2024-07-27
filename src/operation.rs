@@ -4,7 +4,7 @@ use crate::error::{SML_Error, SML_Result};
 use crate::value::Value;
 
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum UnaryOperation {
     // Arithmetic
     Increment,
@@ -57,7 +57,7 @@ impl UnaryOperation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum BinaryOperation {
     Assign,
 

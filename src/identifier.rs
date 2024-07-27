@@ -5,14 +5,14 @@ use crate::error::{SML_Error, SML_Result};
 use crate::value::Value;
 
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum IdentifierStore {
     Inputs,
     Outputs,
     Globals
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Identifier {
     store: IdentifierStore,
     name: String,
