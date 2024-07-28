@@ -11,9 +11,34 @@ enum CompileState {
     Globals,
 }
 
+fn tokenise(s: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+
+    for c in s.chars() {
+        match c {
+            ' ' | '\t' => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            // TODO: what if no whitespace between operators?
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    tokens
+}
+
 
 fn expr_from_str(s: &str) -> SML_Result<Expression> {
-    let _ = s;
+    let _ = tokenise(s);
     Ok(Expression::Value(Value::Bool(true)))
 }
 
