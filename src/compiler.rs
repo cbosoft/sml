@@ -57,7 +57,7 @@ impl Token {
             Token::OpenParens | Token::CloseParens => 0,
             Token::Operator(op) => {
                 match op.as_str() {
-                    "*" | "/" => 1,
+                    "*" | "/" | "^" => 1,
                     "+" | "-" => 2,
                     "==" | "<" | "<=" | ">" | ">=" => 3,
                     "=" => 4,
