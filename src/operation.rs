@@ -83,8 +83,8 @@ impl BinaryOperation {
             "!=" => Self::NotEqual,
 
             // Boolean
-            "and" => Self::And,
-            "or" => Self::Or,
+            "&&" => Self::And,
+            "||" => Self::Or,
 
             s => { return Err(SML_Error::JsonFormatError(format!("BinaryOp got invalid value {s}"))); }
         };
