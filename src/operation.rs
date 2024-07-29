@@ -72,7 +72,7 @@ impl BinaryOperation {
             "-" => Self::Subtract,
             "*" => Self::Multiply,
             "/" => Self::Divide,
-            "**" | "^" => Self::Power,
+            "^" => Self::Power,
 
             // Comparison and equality
             "<" => Self::LessThan,
