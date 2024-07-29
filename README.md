@@ -1,3 +1,4 @@
+![tests badge](https://github.com/cbosoft/sml/actions/workflows/tests.yml/badge.svg)
 # SML - ShakeMyLeg, is that a State Machine Language?
 
 A simple state machine definition language and interpreter.
