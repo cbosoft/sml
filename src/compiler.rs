@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{error::{SML_Error, SML_Result}, expression::Expression, state::{State, StateOp}, StateMachine, value::Value};
+use crate::{error::{SML_Error, SML_Result}, expression::Expression, identifier::Identifier, operation::BinaryOperation, state::{State, StateOp}, value::Value, StateMachine};
 
 
 enum CompileState {
@@ -11,7 +11,47 @@ enum CompileState {
     Globals,
 }
 
-fn tokenise(s: &str) -> Vec<String> {
+enum Token {
+    Identifier(String),
+    Number(f64),
+    String(String),
+    Operator(String),
+    Boolean(bool),
+    OpenParens,
+    CloseParens,
+}
+
+impl Token {
+    pub fn from_string(s: String) -> Self {
+        if s.starts_with("'") || s.starts_with("\"") {
+            // TODO: remove quotes
+            Self::String(s)
+        }
+        else if let Ok(v) = s.parse::<f64>() {
+            Self::Number(v)
+        }
+        else if let "+" | "-" | "*" | "/" | "=" | "==" | "<" | "<=" | ">" | ">=" | "!=" = s.as_str() {
+            Self::Operator(s)
+        }
+        else if s == "(" {
+            Self::OpenParens
+        }
+        else if s == ")" {
+            Self::CloseParens
+        }
+        else if s == "true" {
+            Self::Boolean(true)
+        }
+        else if s == "false" {
+            Self::Boolean(false)
+        }
+        else {
+            Self::Identifier(s)
+        }
+    }
+}
+
+fn tokenise(s: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut current = String::new();
 
@@ -19,7 +59,9 @@ fn tokenise(s: &str) -> Vec<String> {
         match c {
             ' ' | '\t' => {
                 if !current.is_empty() {
-                    tokens.push(std::mem::take(&mut current));
+                    let token_src = std::mem::take(&mut current);
+                    let token = Token::from_string(token_src);
+                    tokens.push(token);
                 }
             }
             // TODO: what if no whitespace between operators?
@@ -30,7 +72,8 @@ fn tokenise(s: &str) -> Vec<String> {
     }
 
     if !current.is_empty() {
-        tokens.push(current);
+        let token = Token::from_string(current);
+        tokens.push(token);
     }
 
     tokens
@@ -38,14 +81,72 @@ fn tokenise(s: &str) -> Vec<String> {
 
 
 fn expr_from_str(s: &str) -> SML_Result<Expression> {
-    let _ = tokenise(s);
-    Ok(Expression::Value(Value::Bool(true)))
+    let infix = tokenise(s);
+    let mut postfix = Vec::new();
+    let mut stack = Vec::new();
+
+    // infix -> postfix
+    for token in infix.into_iter() {
+        match &token {
+            Token::Number(_) | Token::Identifier(_) | Token::String(_) | Token::Boolean(_) => { postfix.push(token); },
+            Token::OpenParens => { stack.push(token); },
+            Token::CloseParens => { 
+                while !stack.is_empty() && !matches!(stack.last().unwrap(), Token::OpenParens) {
+                    postfix.push(stack.pop().unwrap());
+                }
+            },
+            Token::Operator(_) => {
+                if stack.is_empty() || matches!(stack.last().unwrap(), Token::OpenParens) {
+                    stack.push(token);
+                }
+                else {
+                    while !stack.is_empty() && !matches!(stack.last().unwrap(), Token::OpenParens) /* TODO: operator precedence */ {
+                        postfix.push(stack.pop().unwrap());
+                    }
+                    stack.push(token);
+                }
+            }
+        }
+    }
+
+    for token in stack.into_iter().rev() {
+        postfix.push(token);
+    }
+
+    // postfix -> call tree
+    let mut exp_stack = Vec::new();
+    for token in postfix.into_iter() {
+        match token {
+            Token::Number(v) => { let expr = Expression::Value(Value::Number(v)); exp_stack.push(expr); }
+            Token::String(s) => { let expr = Expression::Value(Value::String(s)); exp_stack.push(expr); }
+            Token::Boolean(b) => { let expr = Expression::Value(Value::Bool(b)); exp_stack.push(expr); }
+            Token::Identifier(i) => { let expr = Expression::Identifier(Identifier::from_str(i)?); exp_stack.push(expr); }
+            Token::OpenParens | Token::CloseParens => (),
+            Token::Operator(op) => {
+                let a = exp_stack.pop().unwrap();
+                let b = exp_stack.pop().unwrap();
+                let expr = Expression::Binary(BinaryOperation::from_str(op)?, Box::new(b), Box::new(a));
+                exp_stack.push(expr);
+            }
+        }
+    }
+
+    // there should only be one value in the stack
+    if exp_stack.len() > 1 {
+        Err(SML_Error::SyntaxError("Too many expressions left!".to_string()))
+    }
+    else if exp_stack.len() == 0 {
+        Err(SML_Error::SyntaxError("No expression!".to_string()))
+    }
+    else {
+        Ok(exp_stack.pop().unwrap())
+    }
 }
 
 
 pub fn compile(s: &str) -> SML_Result<StateMachine> {
     let mut c_state_stack = vec![CompileState::TopLevel];
-    let lines: Vec<_> = s.lines().collect();
+    let lines = {let mut lines: Vec<_> = s.lines().collect(); lines.push(""); lines };
     let mut i = 0usize;
     let mut state_data = None;
     let mut state_branch_data = None;
@@ -74,12 +175,15 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                         true
                     }
                     else {
-                        true
+                        return Err(SML_Error::SyntaxError(format!("State definition with no name on line {i}")));
                     }
                 }
                 else if line == "globals:" {
                     c_state_stack.push(CompileState::Globals);
                     true
+                }
+                else if !line.is_empty() {
+                    return Err(SML_Error::SyntaxError(format!("Unexpected value {line} on line {i}")));
                 }
                 else {
                     true
@@ -87,7 +191,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
             },
             CompileState::State => {
                 if line.starts_with(&leading_ws.as_ref().unwrap().1) {
-                    panic!();
+                    return Err(SML_Error::SyntaxError(format!("Unexpected de-dent on line {i}")));
                 }
                 else if line.starts_with(&leading_ws.as_ref().unwrap().0) {
                     let line = line.trim_start();
@@ -101,11 +205,11 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                             c_state_stack.push(CompileState::StateBranch);
                         }
                         else {
-                            panic!();
+                            return Err(SML_Error::SyntaxError(format!("Missing colon on line {i}")));
                         }
                     }
                     else {
-                        panic!();
+                        return Err(SML_Error::SyntaxError(format!("Expect head or when after state intro on line {i}")));
                     }
                     true
                 }
@@ -212,7 +316,7 @@ state A:
 state B:
     when true:
         outputs.bar = inputs.bar
-        changetoA
+        changeto A
 "#;
         let mut sm = compile(SRC).unwrap();
 
