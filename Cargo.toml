@@ -1,6 +1,6 @@
 [package]
 name = "shakemyleg"
-description = "A simple state machine definition language and interpreter. Compiles to JSON as intermediate for some reason."
+description = "A simple state machine definition language and interpreter."
 repository = "https://github.com/cbosoft/sml"
 license = "MIT"
 version = "2.0.0"
