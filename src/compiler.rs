@@ -2,6 +2,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::{error::{SML_Error, SML_Result}, expression::Expression, identifier::Identifier, operation::BinaryOperation, state::{State, StateOp}, value::Value, StateMachine};
 
+// Algorithm from: https://faculty.cs.niu.edu/~hutchins/csci241/eval.htm
 
 enum CompileState {
     TopLevel, // "state <name>:" or "globals:"
