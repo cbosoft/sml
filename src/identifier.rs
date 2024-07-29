@@ -48,6 +48,27 @@ impl Identifier {
         Ok(Self { store, name, path })
     }
 
+    pub fn from_str(s: String) -> SML_Result<Self> {
+        let parts: Vec<_> = s.split(".").collect();
+        if parts.len() < 2 {
+            return Err(SML_Error::SyntaxError(format!("Identifier must specify store location i.e., start with \"inputs.\", \"globals.\", or \"outputs.\". (Note full-stops.) Got {s:?}")));
+        }
+
+        let store = match parts[0] {
+            "inputs" => IdentifierStore::Inputs,
+            "outputs" => IdentifierStore::Outputs,
+            "globals" => IdentifierStore::Globals,
+            _ => {
+                return Err(SML_Error::SyntaxError(format!("Identifier must specify store location i.e., start with \"inputs.\", \"globals.\", or \"outputs.\". Got: {:?}", parts[0])));
+            }
+        };
+
+        let path: Vec<_> = parts[1..].iter().map(|s| { s.to_string() } ).collect();
+        let name = path.join(".");
+
+        Ok(Self { name, path, store })
+    }
+
     pub fn get(&self, i: &JsonValue, o: &JsonValue, g: &JsonValue) -> SML_Result<Value> {
         let mut store = match self.store {
             IdentifierStore::Inputs => i,

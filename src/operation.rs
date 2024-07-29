@@ -85,36 +85,40 @@ impl BinaryOperation {
     pub fn new(json: &JsonValue) -> SML_Result<Self> {
         if json.is_string() {
             let s = json.as_str().unwrap();
-            let rv = match s {
-                "=" => Self::Assign,
-
-                // Arithmetic
-                "+" => Self::Add,
-                "-" => Self::Subtract,
-                "*" => Self::Multiply,
-                "/" => Self::Divide,
-                "**" | "^" => Self::Power,
-
-                // Comparison and equality
-                "<" => Self::LessThan,
-                "<=" => Self::LessThanOrEqual,
-                ">" => Self::GreaterThan,
-                ">=" => Self::GreaterThanOrEqual,
-                "==" => Self::Equal,
-                "!=" => Self::NotEqual,
-
-                // Boolean
-                "and" => Self::And,
-                "or" => Self::Or,
-
-                s => { return Err(SML_Error::JsonFormatError(format!("BinaryOp got invalid value {s}"))); }
-            };
-
-            Ok(rv)
+            Self::from_str(s.to_string())
         }
         else {
             return Err(SML_Error::JsonFormatError("Operation should be a string value.".to_string()));
         }
+    }
+
+    pub fn from_str(s: String) -> SML_Result<Self> {
+        let rv = match s.as_str() {
+            "=" => Self::Assign,
+
+            // Arithmetic
+            "+" => Self::Add,
+            "-" => Self::Subtract,
+            "*" => Self::Multiply,
+            "/" => Self::Divide,
+            "**" | "^" => Self::Power,
+
+            // Comparison and equality
+            "<" => Self::LessThan,
+            "<=" => Self::LessThanOrEqual,
+            ">" => Self::GreaterThan,
+            ">=" => Self::GreaterThanOrEqual,
+            "==" => Self::Equal,
+            "!=" => Self::NotEqual,
+
+            // Boolean
+            "and" => Self::And,
+            "or" => Self::Or,
+
+            s => { return Err(SML_Error::JsonFormatError(format!("BinaryOp got invalid value {s}"))); }
+        };
+
+        Ok(rv)
     }
 
     pub fn apply(&self, left: &Value, right: &Value) -> SML_Result<Value> {
