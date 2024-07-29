@@ -1,5 +1,3 @@
-use json::JsonValue;
-
 use crate::error::{SML_Error, SML_Result};
 use crate::value::Value;
 
@@ -16,23 +14,6 @@ pub enum UnaryOperation {
 
 
 impl UnaryOperation {
-    pub fn new(json: &JsonValue) -> SML_Result<Self> {
-        if json.is_string() {
-            let s = json.as_str().unwrap();
-            let rv = match s {
-                "not" => Self::Negate,
-                "++" => Self::Increment,
-                "--" => Self::Decrement,
-                s => { return Err(SML_Error::JsonFormatError(format!("UnaryOp got invalid value {s}"))); }
-            };
-
-            Ok(rv)
-        }
-        else {
-            return Err(SML_Error::JsonFormatError("Operation should be a string value.".to_string()));
-        }
-    }
-
     pub fn apply(&self, operand: &Value) -> SML_Result<Value> {
         match self {
             Self::Negate => {
@@ -82,16 +63,6 @@ pub enum BinaryOperation {
 }
 
 impl BinaryOperation {
-    pub fn new(json: &JsonValue) -> SML_Result<Self> {
-        if json.is_string() {
-            let s = json.as_str().unwrap();
-            Self::from_str(s.to_string())
-        }
-        else {
-            return Err(SML_Error::JsonFormatError("Operation should be a string value.".to_string()));
-        }
-    }
-
     pub fn from_str(s: String) -> SML_Result<Self> {
         let rv = match s.as_str() {
             "=" => Self::Assign,

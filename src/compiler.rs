@@ -288,7 +288,6 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
     let initial_state = states.get(&initial_state).unwrap().clone();
 
     Ok(StateMachine::new(
-        json::object! { },
         states,
         initial_state,
     ))

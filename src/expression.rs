@@ -15,57 +15,6 @@ pub enum Expression {
 }
 
 impl Expression {
-    pub fn new(json: &JsonValue) -> SML_Result<Self> {
-        if !json.is_object() {
-            return Err(SML_Error::JsonFormatError("JSON expr is expected to be object.".to_string()));
-        }
-
-        let kind = &json["kind"];
-        if !kind.is_string() {
-            return Err(SML_Error::JsonFormatError("JSON expr['kind'] is expected to be string.".to_string()));
-        }
-
-        match kind.as_str().unwrap() {
-            "value" => Self::new_value(json),
-            "identifier" => Self::new_identifier(json),
-            "unary op" => Self::new_unaryop(json),
-            "binary op" => Self::new_binaryop(json),
-            s => Err(SML_Error::JsonFormatError(format!("unhandled expr kind {s}"))),
-        }
-    }
-
-    pub fn new_value(json: &JsonValue) -> SML_Result<Self> {
-        let value = &json["value"];
-        let value = Value::new(value)?;
-        Ok(Self::Value(value))
-    }
-
-    pub fn new_identifier(json: &JsonValue) -> SML_Result<Self> {
-        let identifier = Identifier::new(json)?;
-        Ok(Self::Identifier(identifier))
-    }
-
-    pub fn new_unaryop(json: &JsonValue) -> SML_Result<Self> {
-        let op = &json["operation"];
-        let op = UnaryOperation::new(op)?;
-        let operand = &json["operand"];
-        let operand = Expression::new(operand)?;
-        let operand = Box::new(operand);
-        Ok(Self::Unary(op, operand))
-    }
-
-    pub fn new_binaryop(json: &JsonValue) -> SML_Result<Self> {
-        let op = &json["operation"];
-        let op = BinaryOperation::new(op)?;
-        let left = &json["left"];
-        let left = Expression::new(left)?;
-        let left = Box::new(left);
-        let right = &json["right"];
-        let right = Expression::new(right)?;
-        let right = Box::new(right);
-        Ok(Self::Binary(op, left, right))
-    }
-
     pub fn evaluate(&self, i: &JsonValue, o: &mut JsonValue, g: &mut JsonValue) -> SML_Result<Value> {
         let rv = match self {
             Self::Value(value) => value.clone(),

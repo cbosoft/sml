@@ -20,34 +20,6 @@ pub struct Identifier {
 }
 
 impl Identifier {
-    pub fn new(json: &JsonValue) -> SML_Result<Self> {
-        let store = &json["store"];
-        if !store.is_string() {
-            return Err(SML_Error::JsonFormatError("Identifier missing `store` or is not correct type".to_string()));
-        }
-        let store = store.as_str().unwrap();
-        let store = match store {
-            "inputs" => IdentifierStore::Inputs,
-            "outputs" => IdentifierStore::Outputs,
-            "globals" => IdentifierStore::Globals,
-            s => { return Err(SML_Error::JsonFormatError(format!("Identifier `store` got unexpected value {s:?}. "))); }
-        };
-
-
-        let name = &json["name"];
-        if !name.is_string() {
-            return Err(SML_Error::JsonFormatError("Identifier missing `name` or is not correct type".to_string()));
-        }
-        let name = name.as_str().unwrap().to_string();
-        let path: Vec<_> = name.split(".").map(|s| s.to_string()).collect();
-
-        if path.is_empty() {
-            return Err(SML_Error::JsonFormatError(format!("Zero-length identifier: {name}")));
-        }
-
-        Ok(Self { store, name, path })
-    }
-
     pub fn from_str(s: String) -> SML_Result<Self> {
         let parts: Vec<_> = s.split(".").collect();
         if parts.len() < 2 {
@@ -134,8 +106,7 @@ mod tests {
     fn test_store_set() {
         let mut g = json::object! { };
         let mut o = json::object! { };
-        let ident = json::object! { store: "outputs", name: "foo.bar" };
-        let ident = Identifier::new(&ident).unwrap();
+        let ident = Identifier::from_str("outputs.foo.bar".to_string()).unwrap();
         let v = Value::Number(1.0);
         ident.set(&mut o, &mut g, &v).unwrap();
 
