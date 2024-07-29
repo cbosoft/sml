@@ -11,6 +11,7 @@ enum CompileState {
     Globals,
 }
 
+#[derive(Debug)]
 enum Token {
     Identifier(String),
     Number(f64),
@@ -47,6 +48,22 @@ impl Token {
         }
         else {
             Self::Identifier(s)
+        }
+    }
+
+    pub fn precedence(&self) -> u8 {
+        match self {
+            Token::OpenParens | Token::CloseParens => 0,
+            Token::Operator(op) => {
+                match op.as_str() {
+                    "*" | "/" => 1,
+                    "+" | "-" => 2,
+                    "==" | "<" | "<=" | ">" | ">=" => 3,
+                    "=" => 4,
+                    _ => 4,
+                }
+            },
+            Token::Identifier(_) | Token::Boolean(_) | Token::Number(_) | Token::String(_) => 5
         }
     }
 }
@@ -100,7 +117,8 @@ fn expr_from_str(s: &str) -> SML_Result<Expression> {
                     stack.push(token);
                 }
                 else {
-                    while !stack.is_empty() && !matches!(stack.last().unwrap(), Token::OpenParens) /* TODO: operator precedence */ {
+                    while !stack.is_empty() && !matches!(stack.last().unwrap(), Token::OpenParens) && (stack.last().unwrap().precedence() <= token.precedence()) {
+                        println!("{:?} ({}) <= {:?} ({})", stack.last().unwrap(), stack.last().unwrap().precedence(), token, token.precedence());
                         postfix.push(stack.pop().unwrap());
                     }
                     stack.push(token);
@@ -313,11 +331,11 @@ mod tests {
         const SRC: &'static str = r#"
 state A:
     when true:
-        outputs.bar = ( inputs.bar + 1 )
+        outputs.bar = inputs.bar + 1
         changeto B
 state B:
     when true:
-        outputs.bar = ( inputs.bar + 1 )
+        outputs.bar = inputs.bar + 1
         changeto A
 "#;
         let mut sm = compile(SRC).unwrap();

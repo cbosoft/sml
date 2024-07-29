@@ -11,16 +11,16 @@ A very simple example `shakemyleg` machine:
 
 state A:
     when true:
-        outputs.bar = ( inputs.bar + 1 )
+        outputs.bar = inputs.bar + 1
         changeto B
 
 state B:
     when true:
-        outputs.bar = ( inputs.bar + 1 )
+        outputs.bar = inputs.bar + 1
         changeto A
 ```
 
-(Redundant parens are necessary because the compiler is dumb). This machine alternates between states A and B, and propagates the value `bar` from the input object to the output, and increments it.
+(Liberal whitespace around operators and brackets is **required** because the compiler is dumb.) This machine alternates between states A and B, and propagates the value `bar` from the input object to the output, and increments it.
 
 We can "compile" this and run it:
 ```rust
@@ -35,11 +35,11 @@ struct Foo {
 let src = r#"
 state A:
     when true:
-        outputs.bar = ( inputs.bar + 1 )
+        outputs.bar = inputs.bar + 1
         changeto B
 state B:
     when true:
-        outputs.bar = ( inputs.bar + 1 )
+        outputs.bar = inputs.bar + 1
         changeto A
 "#;
 
