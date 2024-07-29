@@ -31,6 +31,9 @@ pub enum SML_Error {
     #[error("Input store is immutable and cannot be written to.")]
     InputsWriteError,
 
+    #[error("Syntax error: {0}")]
+    SyntaxError(String),
+
 }
 
 
