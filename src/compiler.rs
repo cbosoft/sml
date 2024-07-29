@@ -311,11 +311,11 @@ mod tests {
         const SRC: &'static str = r#"
 state A:
     when true:
-        outputs.bar = inputs.bar
+        outputs.bar = ( inputs.bar + 1 )
         changeto B
 state B:
     when true:
-        outputs.bar = inputs.bar
+        outputs.bar = ( inputs.bar + 1 )
         changeto A
 "#;
         let mut sm = compile(SRC).unwrap();
@@ -324,6 +324,8 @@ state B:
 
         let i = Foo { bar: 0 };
         let o: Foo = sm.run(i).unwrap().unwrap();
+        assert_eq!(o.bar, 1u64);
+        assert_eq!(sm.current_state(), "B".to_string());
 
     }
 
