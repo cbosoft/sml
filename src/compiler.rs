@@ -154,9 +154,15 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
     let mut states = Vec::new();
     let mut leading_ws = None;
 
-    loop {
+    let nlines = lines.len();
+    while i < nlines {
         let line = lines[i];
         let cstate = c_state_stack.last().unwrap();
+
+        if line.trim_start().starts_with("#") {
+            i += 1;
+            continue;
+        }
 
         if leading_ws.is_none() && matches!(cstate, CompileState::Globals | CompileState::State) {
             let line_no_ws = line.trim_start();
@@ -273,9 +279,6 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
 
         if adv {
             i += 1;
-            if i >= lines.len() {
-                break;
-            }
         }
     }
 

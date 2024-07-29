@@ -3,7 +3,7 @@
 
 A simple state machine definition language and interpreter.
 
-A state machine is composed of states - stages of the machine which are run until an exit condition is met and the machine moves to the next stage. State machines in `shakemyleg` are defined as a series of expressions which are run every time the machine runs - the "head". Along with the head is the body - a list of conditions which, when evaluate `true`, run a series of expressions and a `StateOp` (`changeto <state>`, `stay`, `end`). If no condition is true, no action is taken. Conditions are visited in order.
+A state machine is composed of states - stages of the machine which are run until an exit condition is met and the machine moves to the next stage. State machines in `shakemyleg` are defined as a series of expressions which are run every time the machine runs - the "head". Along with the head is the body - a list of conditions which, when evaluate `true`, run a series of expressions and a `StateOp` (`changeto <state>`, `stay`, `end`). If no condition is true, no action is taken. Conditions are visited in order. Comments start with a `#`.
 
 A very simple example `shakemyleg` machine:
 ```sml
