@@ -112,7 +112,7 @@ fn tokenise(s: &str) -> Vec<Token> {
                     quote_stack.push(c);
                 }
             },
-            (true, _, '+' | '-' | '*' | '/' | '^' | '=') => {
+            (true, _, '+' | '-' | '*' | '/' | '^') => {
                 if quote_stack.is_empty() {
                     create_new_token(&mut current, &mut tokens);
                     current.push(c);
