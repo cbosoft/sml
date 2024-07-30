@@ -176,16 +176,14 @@ impl BinaryOperation {
 
             // Boolean ops
             Self::And => {
-                match (left, right) {
-                    (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(*left && *right)),
-                    _ => Err(SML_Error::BadOperation("Boolean ops only valid for boolean operands.".to_string()))
-                }
+                let left = left.as_bool();
+                let right = right.as_bool();
+                Ok(Value::Bool(left && right))
             },
             Self::Or => {
-                match (left, right) {
-                    (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(*left || *right)),
-                    _ => Err(SML_Error::BadOperation("Boolean ops only valid for boolean operands.".to_string()))
-                }
+                let left = left.as_bool();
+                let right = right.as_bool();
+                Ok(Value::Bool(left || right))
             },
         }
     }
