@@ -392,6 +392,19 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenise_3() {
+        let input = r#"a = 1 == b"#;
+        let expected_output = vec![
+            Token::Identifier("a".to_string()),
+            Token::Operator("=".to_string()),
+            Token::Number(1f64),
+            Token::Operator("==".to_string()),
+            Token::Identifier("b".to_string()),
+        ];
+        let output = tokenise(input);
+        assert_eq!(output, expected_output);
+    }
+    #[test]
     fn test_compile() {
         const SRC: &'static str = r#"
 state A:
