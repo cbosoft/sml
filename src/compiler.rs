@@ -433,7 +433,7 @@ mod tests {
         const SRC: &'static str = r#"
 state A:
     when true:
-        outputs.bar=inputs.bar+1
+        outputs.bar = inputs.bar+1
         changeto B
 state B:
     when true:
