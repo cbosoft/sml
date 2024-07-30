@@ -162,7 +162,6 @@ fn expr_from_str(s: &str) -> SML_Result<Expression> {
                 }
                 else {
                     while !stack.is_empty() && !matches!(stack.last().unwrap(), Token::OpenParens) && (stack.last().unwrap().precedence() <= token.precedence()) {
-                        println!("{:?} ({}) <= {:?} ({})", stack.last().unwrap(), stack.last().unwrap().precedence(), token, token.precedence());
                         postfix.push(stack.pop().unwrap());
                     }
                     stack.push(token);
