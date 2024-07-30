@@ -5,11 +5,11 @@ use crate::{error::{SML_Error, SML_Result}, expression::Expression, identifier::
 // Algorithm from: https://faculty.cs.niu.edu/~hutchins/csci241/eval.htm
 
 enum CompileState {
-    TopLevel, // "state <name>:" or "globals:"
+    TopLevel, // "state <name>:" or "default head:"
     State,
     StateHead,
     StateBranch,
-    Globals,
+    DefaultHead,
 }
 
 #[derive(Debug, PartialEq)]
@@ -236,11 +236,11 @@ fn expr_from_str(s: &str, lineno: usize) -> SML_Result<Expression> {
 /// ```
 pub fn compile(s: &str) -> SML_Result<StateMachine> {
     let mut c_state_stack = vec![CompileState::TopLevel];
-    let lines = {let mut lines: Vec<_> = s.lines().collect(); lines.push(""); lines };
+    let lines: Vec<_> = s.lines().collect();
     let mut i = 0usize;
     let mut state_data = None;
     let mut state_branch_data = None;
-    let mut globals = Vec::new();
+    let mut default_head = Vec::new();
     let mut states = Vec::new();
     let mut leading_ws = None;
 
@@ -254,7 +254,9 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
             continue;
         }
 
-        if leading_ws.is_none() && matches!(cstate, CompileState::Globals | CompileState::State) {
+        let line_empty = line.trim() == "";
+
+        if leading_ws.is_none() && matches!(cstate, CompileState::DefaultHead | CompileState::State) {
             let line_no_ws = line.trim_start();
             let ws = line.strip_suffix(line_no_ws).unwrap();
             let ws2 = ws.to_string() + ws;
@@ -274,8 +276,8 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                         return Err(SML_Error::SyntaxError(format!("State definition with no name on line {i}")));
                     }
                 }
-                else if line == "globals:" {
-                    c_state_stack.push(CompileState::Globals);
+                else if line == "default head:" {
+                    c_state_stack.push(CompileState::DefaultHead);
                     true
                 }
                 else if !line.is_empty() {
@@ -287,43 +289,51 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
             },
             CompileState::State => {
                 if line.starts_with(&leading_ws.as_ref().unwrap().1) {
-                    return Err(SML_Error::SyntaxError(format!("Unexpected de-dent on line {i}")));
+                    return Err(SML_Error::SyntaxError(format!("Unexpected indent on line {i}")));
                 }
                 else if line.starts_with(&leading_ws.as_ref().unwrap().0) {
-                    let line = line.trim_start();
-                    if line == "head:" {
-                        c_state_stack.push(CompileState::StateHead);
-                    }
-                    else if let Some(expr_colon) = line.strip_prefix("when ") {
-                        if let Some(expr) = expr_colon.strip_suffix(":") {
-                            let cond = expr_from_str(expr, i)?;
-                            state_branch_data = Some((cond, Vec::new(), StateOp::Stay));
-                            c_state_stack.push(CompileState::StateBranch);
+                    if !line_empty {
+                        let line_trim = line.trim_start();
+                        if line_trim == "head:" {
+                            c_state_stack.push(CompileState::StateHead);
+                        }
+                        else if let Some(expr_colon) = line_trim.strip_prefix("when ") {
+                            if let Some(expr) = expr_colon.strip_suffix(":") {
+                                let cond = expr_from_str(expr, i)?;
+                                state_branch_data = Some((cond, Vec::new(), StateOp::Stay));
+                                c_state_stack.push(CompileState::StateBranch);
+                            }
+                            else {
+                                return Err(SML_Error::SyntaxError(format!("Missing colon on line {i}:{line}")));
+                            }
                         }
                         else {
-                            return Err(SML_Error::SyntaxError(format!("Missing colon on line {i}")));
+                            eprintln!("{}", lines[i-1]);
+                            return Err(SML_Error::SyntaxError(format!("Expect head or when after state intro on line {i}:{line}")));
                         }
-                    }
-                    else {
-                        return Err(SML_Error::SyntaxError(format!("Expect head or when after state intro on line {i}")));
                     }
                     true
                 }
                 else {
-                    let (name, head, body) = state_data.take().unwrap();
-                    states.push(State::new(name, head, body));
-                    c_state_stack.pop();
-                    false
+                    if let Some((name, head, body)) = state_data.take() {
+                        states.push(State::new(name, head, body));
+                        c_state_stack.pop();
+                        false
+                    }
+                    else {
+                        return Err(SML_Error::SyntaxError(format!("Unexpected de-dent on line {i}")));
+                    }
                 }
             },
-            CompileState::Globals => {
+            CompileState::DefaultHead => {
                 if line.starts_with(leading_ws.as_ref().unwrap().0) {
                     let line = line.trim_start();
                     let expr = expr_from_str(line, i)?;
-                    globals.push(expr);
+                    default_head.push(expr);
                     true
                 }
                 else {
+                    // TODO warn if empty head?
                     c_state_stack.pop();
                     false
                 }
@@ -372,6 +382,10 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
         }
     }
 
+    if let Some((name, head, body)) = state_data {
+        states.push(State::new(name, head, body));
+    }
+
     let initial_state = states[0].name().clone();
     let states_iter = states.into_iter();
     let mut states = HashMap::new();
@@ -381,6 +395,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
     let initial_state = states.get(&initial_state).unwrap().clone();
 
     Ok(StateMachine::new(
+        default_head,
         states,
         initial_state,
     ))

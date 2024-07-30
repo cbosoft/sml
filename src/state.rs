@@ -50,8 +50,12 @@ impl State {
     }
 
     // return some output if not ended
-    pub fn run(&self, i: &JsonValue, g: &mut JsonValue) -> SML_Result<(JsonValue, StateOp)> {
+    pub fn run(&self, i: &JsonValue, g: &mut JsonValue, default_head: &Vec<Expression>) -> SML_Result<(JsonValue, StateOp)> {
         let mut o = json::object! { };
+
+        for expr in default_head {
+            expr.evaluate(i, &mut o, g)?;
+        }
 
         for expr in &self.head {
             expr.evaluate(i, &mut o, g)?;

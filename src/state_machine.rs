@@ -4,6 +4,7 @@ use std::rc::Rc;
 use serde::{Serialize, de::DeserializeOwned};
 use json::JsonValue;
 
+use crate::expression::Expression;
 use crate::state::{State, StateOp};
 use crate::error::{SML_Error, SML_Result};
 
@@ -14,16 +15,17 @@ type StateRef = Rc<State>;
 #[derive(Clone, Debug)]
 pub struct StateMachine {
     globals: JsonValue,
+    default_head: Vec<Expression>,
     states: HashMap<String, StateRef>,
     current_state: Option<StateRef>,
 }
 
 
 impl StateMachine {
-    pub fn new(states: HashMap<String, StateRef>, initial_state: StateRef) -> Self {
+    pub fn new(default_head: Vec<Expression>, states: HashMap<String, StateRef>, initial_state: StateRef) -> Self {
         let globals = json::object! { };
         let current_state = Some(Rc::clone(&initial_state));
-        Self { globals, states, current_state }
+        Self { globals, default_head, states, current_state }
     }
 
     pub fn reinit<G: Serialize>(&mut self, g: G) -> SML_Result<()> {
@@ -52,7 +54,7 @@ impl StateMachine {
                 let i = serde_json::to_string(&i)?;
                 let i = json::parse(&i)?;
                 let state = Rc::clone(&current_state);
-                let (o, state_op) = (*state).run(&i, &mut self.globals)?;
+                let (o, state_op) = (*state).run(&i, &mut self.globals, &self.default_head)?;
                 let o = o.to_string();
                 let o: O = serde_json::from_str(&o)?;
                 (Some(o), state_op)
