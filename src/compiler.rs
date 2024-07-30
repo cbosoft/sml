@@ -112,12 +112,10 @@ fn tokenise(s: &str) -> Vec<Token> {
                     quote_stack.push(c);
                 }
             },
-            (true, _, '+' | '-' | '*' | '/' | '^') => {
-                if quote_stack.is_empty() {
-                    create_new_token(&mut current, &mut tokens);
-                    current.push(c);
-                    create_new_token(&mut current, &mut tokens);
-                }
+            (true, _, '+' | '-' | '*' | '/' | '^' | '(' | ')') => {
+                create_new_token(&mut current, &mut tokens);
+                current.push(c);
+                create_new_token(&mut current, &mut tokens);
             }
             // TODO: what if no whitespace between 2-char operators?
             _ => {
@@ -147,9 +145,16 @@ fn expr_from_str(s: &str) -> SML_Result<Expression> {
             Token::Number(_) | Token::Identifier(_) | Token::String(_) | Token::Boolean(_) => { postfix.push(token); },
             Token::OpenParens => { stack.push(token); },
             Token::CloseParens => { 
+                if stack.is_empty() {
+                    return Err(SML_Error::SyntaxError("unexpected right parens.".to_string()));
+                }
                 while !stack.is_empty() && !matches!(stack.last().unwrap(), Token::OpenParens) {
                     postfix.push(stack.pop().unwrap());
                 }
+                if !matches!(stack.last().unwrap(), Token::OpenParens) {
+                    return Err(SML_Error::SyntaxError("unexpected right parens.".to_string()));
+                }
+                let _ = stack.pop().unwrap();
             },
             Token::Operator(_) => {
                 if stack.is_empty() || matches!(stack.last().unwrap(), Token::OpenParens) {
@@ -404,6 +409,25 @@ mod tests {
         let output = tokenise(input);
         assert_eq!(output, expected_output);
     }
+
+    #[test]
+    fn test_tokenise_4() {
+        let input = r#"a = (1 + b)*3"#;
+        let expected_output = vec![
+            Token::Identifier("a".to_string()),
+            Token::Operator("=".to_string()),
+            Token::OpenParens,
+            Token::Number(1f64),
+            Token::Operator("+".to_string()),
+            Token::Identifier("b".to_string()),
+            Token::CloseParens,
+            Token::Operator("*".to_string()),
+            Token::Number(3f64),
+        ];
+        let output = tokenise(input);
+        assert_eq!(output, expected_output);
+    }
+
     #[test]
     fn test_compile() {
         const SRC: &'static str = r#"
