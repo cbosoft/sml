@@ -169,6 +169,9 @@ fn expr_from_str(s: &str) -> SML_Result<Expression> {
             }
         }
     }
+    if !stack.is_empty() && matches!(stack.last().unwrap(), Token::OpenParens) {
+        return Err(SML_Error::SyntaxError("unbalanced parens.".to_string()));
+    }
 
     for token in stack.into_iter().rev() {
         postfix.push(token);
