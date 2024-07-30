@@ -21,7 +21,7 @@ impl StateOp {
             match s {
                 "stay" => Ok(Self::Stay),
                 "end" => Ok(Self::End),
-                s => Err(SML_Error::JsonFormatError(format!("Unexpected StateOp: {s:?}")))
+                s => Err(SML_Error::SyntaxError(format!("Unexpected StateOp: {s:?} (expected \"stay\", \"end\", or \"changeto <state>\".")))
             }
         }
     }
