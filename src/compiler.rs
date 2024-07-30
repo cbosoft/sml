@@ -391,6 +391,10 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
         }
     }
 
+    if let Some(branch) = state_branch_data {
+        state_data.as_mut().unwrap().2.push(branch);
+    }
+
     if let Some((name, head, body)) = state_data {
         states.push(State::new(name, head, body));
     }
@@ -549,6 +553,35 @@ state B:
         changeto A
 "#;
         let _ = compile(SRC).unwrap();
+    }
+
+    #[derive(Serialize)]
+    struct InFoo {
+        foo: u8
+    }
+
+    #[derive(Deserialize)]
+    struct OutBar {
+        bar: u8
+    }
+
+    #[test]
+    fn test_compile_end() {
+        const SRC: &'static str = r#"
+state final:
+    when true:
+        outputs.bar = 1
+        end
+"#;
+        let mut sm = compile(SRC).unwrap();
+
+        let i = InFoo { foo: 0u8 };
+        let o: OutBar = sm.run(i).unwrap().unwrap();
+        assert_eq!(o.bar, 1u8);
+
+        let i = InFoo { foo: 0u8 };
+        let rv: SML_Result<Option<OutBar>> = sm.run(i);
+        assert!(matches!(rv, Ok(None)));
     }
 
 }
