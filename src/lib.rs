@@ -2,6 +2,7 @@
 
 mod compiler;
 mod error;
+pub mod examples;
 mod value;
 mod identifier;
 mod operation;
