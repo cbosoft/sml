@@ -206,6 +206,23 @@ fn expr_from_str(s: &str) -> SML_Result<Expression> {
 }
 
 
+/// Take a string of SML source and compile to state machine.
+/// ```
+/// use shakemyleg::compile;
+///
+/// let src = r#"
+/// state init:
+///   when inputs.b < 10:
+///     outputs.b = inputs.b + 1
+///   when inputs.b >= 10:
+///     changeto second
+/// state second:
+///   when true:
+///     outputs.c = inputs.c + 2
+/// "#;
+///
+/// let sm = compile(src).unwrap();
+/// ```
 pub fn compile(s: &str) -> SML_Result<StateMachine> {
     let mut c_state_stack = vec![CompileState::TopLevel];
     let lines = {let mut lines: Vec<_> = s.lines().collect(); lines.push(""); lines };
