@@ -12,7 +12,7 @@ enum CompileState {
     Globals,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Token {
     Identifier(String),
     Number(f64),
@@ -70,24 +70,61 @@ impl Token {
     }
 }
 
+
+/// Convert an expression string into a list of tokens.
+/// "a = 1+1" -> [a, =, 1, +, 1]
 fn tokenise(s: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut current = String::new();
+    let mut quote_stack = Vec::new();
+    let mut pc = ' ';
+    
+    fn create_new_token(token: &mut String, tokens: &mut Vec<Token>) {
+        // only create new token if current is not empty
+        if !token.is_empty() {
+            let token = std::mem::take(token);
+            let token = Token::from_string(token);
+            tokens.push(token);
+        }
+    }
 
     for c in s.chars() {
-        match c {
-            ' ' | '\t' => {
-                if !current.is_empty() {
-                    let token_src = std::mem::take(&mut current);
-                    let token = Token::from_string(token_src);
-                    tokens.push(token);
+        match (quote_stack.is_empty(), pc, c) {
+            (true, _, ' ' | '\t') => {
+                create_new_token(&mut current, &mut tokens);
+            }
+            (_, '\\', '\\') => { current.push(c); },
+            (_, _, '\\') => {}, // escape char; wait to see what's next
+            (_, '\\', '"' | '\'') => { current.push(c); },
+            (_, _, '"' | '\'') => { 
+                current.push(c);
+                if quote_stack.is_empty() {
+                    quote_stack.push(c);
+                }
+                else if *quote_stack.last().unwrap() == c {
+                    let _ = quote_stack.pop();
+                    if quote_stack.is_empty() {
+                        // that quote closes the token!
+                        create_new_token(&mut current, &mut tokens);
+                    }
+                }
+                else {
+                    quote_stack.push(c);
+                }
+            },
+            (true, _, '+' | '-' | '*' | '/' | '^' | '=') => {
+                if quote_stack.is_empty() {
+                    create_new_token(&mut current, &mut tokens);
+                    current.push(c);
+                    create_new_token(&mut current, &mut tokens);
                 }
             }
-            // TODO: what if no whitespace between operators?
+            // TODO: what if no whitespace between 2-char operators?
             _ => {
                 current.push(c);
             }
         }
+        pc = c;
     }
 
     if !current.is_empty() {
@@ -329,11 +366,37 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenise_1() {
+        let input = "a = 1+1";
+        let expected_output = vec![
+            Token::Identifier("a".to_string()),
+            Token::Operator("=".to_string()),
+            Token::Number(1f64),
+            Token::Operator("+".to_string()),
+            Token::Number(1f64),
+        ];
+        let output = tokenise(input);
+        assert_eq!(output, expected_output);
+    }
+
+    #[test]
+    fn test_tokenise_2() {
+        let input = r#"a = "1 + \"1\"""#;
+        let expected_output = vec![
+            Token::Identifier("a".to_string()),
+            Token::Operator("=".to_string()),
+            Token::String("\"1 + \"1\"\"".to_string()),
+        ];
+        let output = tokenise(input);
+        assert_eq!(output, expected_output);
+    }
+
+    #[test]
     fn test_compile() {
         const SRC: &'static str = r#"
 state A:
     when true:
-        outputs.bar = inputs.bar + 1
+        outputs.bar=inputs.bar+1
         changeto B
 state B:
     when true:
