@@ -26,7 +26,16 @@ enum Token {
 impl Token {
     pub fn from_string(s: String) -> Self {
         if s.starts_with("'") || s.starts_with("\"") {
-            // TODO: remove quotes
+            let chars: Vec<_> = s.chars().collect();
+
+            // ensure quotes match up
+            if chars[0] != chars[chars.len() - 1] {
+                panic!();
+            }
+
+            // remove quotes (first and last chars)
+            let s: String = chars[1..(chars.len() - 1)].iter().collect();
+
             Self::String(s)
         }
         else if let Ok(v) = s.parse::<f64>() {
@@ -433,7 +442,7 @@ mod tests {
         let expected_output = vec![
             Token::Identifier("a".to_string()),
             Token::Operator("=".to_string()),
-            Token::String("\"1 + \"1\"\"".to_string()),
+            Token::String("1 + \"1\"".to_string()),
         ];
         let output = tokenise(input, 0).unwrap();
         assert_eq!(output, expected_output);
