@@ -73,7 +73,7 @@ impl Token {
 
 /// Convert an expression string into a list of tokens.
 /// "a = 1+1" -> [a, =, 1, +, 1]
-fn tokenise(s: &str) -> Vec<Token> {
+fn tokenise(s: &str, lineno: usize) -> SML_Result<Vec<Token>> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut quote_stack = Vec::new();
@@ -88,7 +88,7 @@ fn tokenise(s: &str) -> Vec<Token> {
         }
     }
 
-    for c in s.chars() {
+    for (col, c) in s.chars().enumerate() {
         match (quote_stack.is_empty(), pc, c) {
             (true, _, ' ' | '\t') => {
                 create_new_token(&mut current, &mut tokens);
@@ -99,9 +99,9 @@ fn tokenise(s: &str) -> Vec<Token> {
             (_, _, '"' | '\'') => { 
                 current.push(c);
                 if quote_stack.is_empty() {
-                    quote_stack.push(c);
+                    quote_stack.push((c, col));
                 }
-                else if *quote_stack.last().unwrap() == c {
+                else if quote_stack.last().unwrap().0 == c {
                     let _ = quote_stack.pop();
                     if quote_stack.is_empty() {
                         // that quote closes the token!
@@ -109,7 +109,7 @@ fn tokenise(s: &str) -> Vec<Token> {
                     }
                 }
                 else {
-                    quote_stack.push(c);
+                    quote_stack.push((c, col));
                 }
             },
             (true, _, '+' | '-' | '*' | '/' | '^' | '(' | ')') => {
@@ -125,17 +125,24 @@ fn tokenise(s: &str) -> Vec<Token> {
         pc = c;
     }
 
+    if !quote_stack.is_empty() {
+        let cols: Vec<_> = quote_stack.iter().map(|qi| { format!("{}", qi.1) }).collect();
+        let s = if cols.len() > 1 { "s" } else { "" };
+        let cols = cols.join(", ");
+        return Err(SML_Error::SyntaxError(format!("Unmatched quote on line {lineno}, col{s} {cols}.")));
+    }
+
     if !current.is_empty() {
         let token = Token::from_string(current);
         tokens.push(token);
     }
 
-    tokens
+    Ok(tokens)
 }
 
 
-fn expr_from_str(s: &str) -> SML_Result<Expression> {
-    let infix = tokenise(s);
+fn expr_from_str(s: &str, lineno: usize) -> SML_Result<Expression> {
+    let infix = tokenise(s, lineno)?;
     let mut postfix = Vec::new();
     let mut stack = Vec::new();
 
@@ -169,12 +176,14 @@ fn expr_from_str(s: &str) -> SML_Result<Expression> {
             }
         }
     }
-    if !stack.is_empty() && matches!(stack.last().unwrap(), Token::OpenParens) {
-        return Err(SML_Error::SyntaxError("unbalanced parens.".to_string()));
-    }
 
     for token in stack.into_iter().rev() {
-        postfix.push(token);
+        match token {
+            Token::OpenParens => {
+                return Err(SML_Error::SyntaxError("unbalanced parens.".to_string()));
+            },
+            _ => { postfix.push(token); }
+        }
     }
 
     // postfix -> call tree
@@ -185,7 +194,7 @@ fn expr_from_str(s: &str) -> SML_Result<Expression> {
             Token::String(s) => { let expr = Expression::Value(Value::String(s)); exp_stack.push(expr); }
             Token::Boolean(b) => { let expr = Expression::Value(Value::Bool(b)); exp_stack.push(expr); }
             Token::Identifier(i) => { let expr = Expression::Identifier(Identifier::from_str(i)?); exp_stack.push(expr); }
-            Token::OpenParens | Token::CloseParens => (),
+            Token::OpenParens | Token::CloseParens => { eprintln!("{token:?}") },
             Token::Operator(op) => {
                 let a = exp_stack.pop().unwrap();
                 let b = exp_stack.pop().unwrap();
@@ -287,7 +296,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                     }
                     else if let Some(expr_colon) = line.strip_prefix("when ") {
                         if let Some(expr) = expr_colon.strip_suffix(":") {
-                            let cond = expr_from_str(expr)?;
+                            let cond = expr_from_str(expr, i)?;
                             state_branch_data = Some((cond, Vec::new(), StateOp::Stay));
                             c_state_stack.push(CompileState::StateBranch);
                         }
@@ -310,7 +319,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
             CompileState::Globals => {
                 if line.starts_with(leading_ws.as_ref().unwrap().0) {
                     let line = line.trim_start();
-                    let expr = expr_from_str(line)?;
+                    let expr = expr_from_str(line, i)?;
                     globals.push(expr);
                     true
                 }
@@ -322,7 +331,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
             CompileState::StateHead => {
                 if line.starts_with(&leading_ws.as_ref().unwrap().1) {
                     let line = line.trim_start();
-                    let expr = expr_from_str(line)?;
+                    let expr = expr_from_str(line, i)?;
                     state_data.as_mut().unwrap().1.push(expr);
                     true
                 }
@@ -344,7 +353,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                         state_branch_data.as_mut().unwrap().2 = StateOp::Stay;
                     }
                     else {
-                        let expr = expr_from_str(line)?;
+                        let expr = expr_from_str(line, i)?;
                         state_branch_data.as_mut().unwrap().1.push(expr);
                     }
                     true
@@ -399,7 +408,7 @@ mod tests {
             Token::Operator("+".to_string()),
             Token::Number(1f64),
         ];
-        let output = tokenise(input);
+        let output = tokenise(input, 0).unwrap();
         assert_eq!(output, expected_output);
     }
 
@@ -411,7 +420,7 @@ mod tests {
             Token::Operator("=".to_string()),
             Token::String("\"1 + \"1\"\"".to_string()),
         ];
-        let output = tokenise(input);
+        let output = tokenise(input, 0).unwrap();
         assert_eq!(output, expected_output);
     }
 
@@ -425,7 +434,7 @@ mod tests {
             Token::Operator("==".to_string()),
             Token::Identifier("b".to_string()),
         ];
-        let output = tokenise(input);
+        let output = tokenise(input, 0).unwrap();
         assert_eq!(output, expected_output);
     }
 
@@ -443,12 +452,12 @@ mod tests {
             Token::Operator("*".to_string()),
             Token::Number(3f64),
         ];
-        let output = tokenise(input);
+        let output = tokenise(input, 0).unwrap();
         assert_eq!(output, expected_output);
     }
 
     #[test]
-    fn test_compile() {
+    fn test_compile_1() {
         const SRC: &'static str = r#"
 state A:
     when true:
@@ -467,7 +476,55 @@ state B:
         let o: Foo = sm.run(i).unwrap().unwrap();
         assert_eq!(o.bar, 1u64);
         assert_eq!(sm.current_state(), "B".to_string());
+    }
 
+    #[test]
+    #[should_panic]
+    fn test_compile_parens_1() {
+        const SRC: &'static str = r#"
+state A:
+    when true:
+        outputs.bar = (inputs.bar+1)*2
+        changeto B
+state B:
+    when true:
+        outputs.bar = (inputs.bar + 1
+        changeto A
+"#;
+        let _ = compile(SRC).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_compile_parens_2() {
+        const SRC: &'static str = r#"
+state A:
+    when true:
+        outputs.bar = (inputs.bar+1)*2
+        changeto B
+state B:
+    when true:
+        outputs.bar = inputs.bar + 1)
+        changeto A
+"#;
+        let _ = compile(SRC).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_compile_quotes_1() {
+        const SRC: &'static str = r#"
+state A:
+    when true:
+        outputs.bar = (inputs.bar+1)*2
+        changeto B
+state B:
+    when true:
+        outputs.bar = inputs.bar + 1
+        outputs.foo = "foo bar baz
+        changeto A
+"#;
+        let _ = compile(SRC).unwrap();
     }
 
 }
