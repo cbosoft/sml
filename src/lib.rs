@@ -9,6 +9,7 @@ mod operation;
 mod expression;
 mod state;
 mod state_machine;
+mod refcount;
 
 pub use crate::error::{SML_Error, SML_Result};
 pub use crate::state_machine::StateMachine;
