@@ -31,7 +31,7 @@ impl Value {
         match self {
             Self::Bool(v) => *v,
             Self::Number(v) => *v != 0.0,
-            Self::String(v) => v.is_empty(),
+            Self::String(v) => !v.is_empty(),
 
     pub fn as_json(&self) -> JsonValue {
         match &self {
