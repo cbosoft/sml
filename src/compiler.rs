@@ -49,7 +49,7 @@ impl Token {
         else if let Ok(v) = s.parse::<f64>() {
             Self::Number(v)
         }
-        else if let "+" | "-" | "*" | "/" | "=" | "==" | "<" | "<=" | ">" | ">=" | "!=" | "&&" | "||" = s.as_str() {
+        else if let "+" | "-" | "*" | "/" | "=" | "==" | "<" | "<=" | ">" | ">=" | "!=" | "&&" | "||" | "contains" = s.as_str() {
             Self::Operator(s)
         }
         else if s == "(" {
@@ -727,7 +727,7 @@ state B:
 
     #[derive(Serialize)]
     struct InFoo {
-        foo: u8
+        foo: Vec<u8>
     }
 
     #[derive(Deserialize)]
@@ -739,19 +739,56 @@ state B:
     fn test_compile_end() {
         const SRC: &'static str = r#"
 state final:
-    when true:
+    always:
         outputs.bar = 1
         end
 "#;
         let mut sm = compile(SRC).unwrap();
 
-        let i = InFoo { foo: 0u8 };
+        let i = InFoo { foo: vec![0u8] };
         let o: OutBar = sm.run(i).unwrap().unwrap();
         assert_eq!(o.bar, 1u8);
 
-        let i = InFoo { foo: 0u8 };
+        let i = InFoo { foo: vec![0u8] };
         let rv: SML_Result<Option<OutBar>> = sm.run(i);
         assert!(matches!(rv, Ok(None)));
+    }
+
+    #[test]
+    fn test_compile_contais_1() {
+        const SRC: &'static str = r#"
+state final:
+    when inputs.foo contains 0:
+        outputs.bar = 1
+    otherwise:
+        outputs.bar = 0
+"#;
+        let mut sm = compile(SRC).unwrap();
+
+        let i = InFoo { foo: vec![0, 1, 2, 3] };
+        let o: OutBar = sm.run(i).unwrap().unwrap();
+        assert_eq!(o.bar, 1u8);
+        
+        let i = InFoo { foo: vec![1, 2, 3] };
+        let o: OutBar = sm.run(i).unwrap().unwrap();
+        assert_eq!(o.bar, 0u8);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_compile_contais_2() {
+        const SRC: &'static str = r#"
+state final:
+    when outputs.bar contains 0:
+        outputs.bar = 1
+    otherwise:
+        outputs.bar = 0
+"#;
+        let mut sm = compile(SRC).unwrap();
+
+        let i = InFoo { foo: vec![0, 1, 2, 3] };
+        let o: OutBar = sm.run(i).unwrap().unwrap();
+        assert_eq!(o.bar, 1u8);
     }
 
 }

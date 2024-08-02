@@ -60,6 +60,9 @@ pub enum BinaryOperation {
     // Boolean
     And,
     Or,
+
+    // List ops
+    Contains,
 }
 
 impl BinaryOperation {
@@ -86,6 +89,9 @@ impl BinaryOperation {
             "&&" => Self::And,
             "||" => Self::Or,
 
+            // List
+            "contains" => Self::Contains,
+
             s => { return Err(SML_Error::SyntaxError(format!("Invalid binary operation {s}"))); }
         };
 
@@ -102,31 +108,37 @@ impl BinaryOperation {
             Self::Add => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left + right)),
-                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for boolean operands.".to_string()))
+                    (Value::List(l), new_value) => {
+                        let mut l = l.clone();
+                        let new_value = Box::new(new_value.clone());
+                        l.push(new_value);
+                        Ok(Value::List(l))
+                    },
+                    _ => Err(SML_Error::BadOperation("'+' only valid for numerical operands or to add a value to a list.".to_string()))
                 }
             },
             Self::Subtract => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left - right)),
-                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for boolean operands.".to_string()))
+                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for numerical operands.".to_string()))
                 }
             },
             Self::Multiply => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left * right)),
-                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for boolean operands.".to_string()))
+                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for numerical operands.".to_string()))
                 }
             },
             Self::Divide => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left / right)),
-                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for boolean operands.".to_string()))
+                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for numerical operands.".to_string()))
                 }
             },
             Self::Power => {
                 match (left, right) {
                     (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left.powf(*right))),
-                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for boolean operands.".to_string()))
+                    _ => Err(SML_Error::BadOperation("Arithmetic only valid for numerical operands.".to_string()))
                 }
             },
 
@@ -184,6 +196,26 @@ impl BinaryOperation {
                 let left = left.as_bool();
                 let right = right.as_bool();
                 Ok(Value::Bool(left || right))
+            },
+            
+            // List ops
+            Self::Contains => {
+                match (left, right) {
+                    (Value::List(left), value) => {
+                        let rv = {
+                            let mut rv = false;
+                            for item in left.iter() {
+                                if **item == *value {
+                                    rv = true;
+                                    break;
+                                }
+                            }
+                            rv
+                        };
+                        Ok(Value::Bool(rv))
+                    }
+                    _ => Err(SML_Error::BadOperation("Invalid type. Syntax is '<list> contains <value>'.".to_string()))
+                }
             },
         }
     }

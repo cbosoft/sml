@@ -8,6 +8,7 @@ pub enum Value {
     String(String),
     Number(f64),
     Bool(bool),
+    List(Vec<Box<Value>>),
 }
 
 impl Value {
@@ -22,8 +23,15 @@ impl Value {
         else if json.is_boolean() {
             Ok(Self::Bool(json.as_bool().unwrap()))
         }
+        else if json.is_array() {
+            let mut list = Vec::new();
+            for item in json.members() {
+                list.push(Box::new(Value::new(item)?));
+            }
+            Ok(Self::List(list))
+        }
         else {
-            Err(SML_Error::JsonFormatError("Value expects a json number, string, or boolean. Got null, object, array, or empty.".to_string()))
+            Err(SML_Error::JsonFormatError("Value expects a json number, string, array, or boolean. Got null, object, or empty.".to_string()))
         }
     }
 
@@ -32,12 +40,18 @@ impl Value {
             Self::Bool(v) => *v,
             Self::Number(v) => *v != 0.0,
             Self::String(v) => !v.is_empty(),
+            Self::List(v) => !v.is_empty(),
+        }
+    }
 
     pub fn as_json(&self) -> JsonValue {
         match &self {
             Self::Bool(b) => JsonValue::Boolean(*b),
             Self::String(s) => JsonValue::String(s.to_string()),
             Self::Number(n) => JsonValue::Number((*n).into()),
+            Self::List(l) => {
+                JsonValue::Array(l.iter().map(|v| v.as_json()).collect())
+            }
         }
     }
 }
