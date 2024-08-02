@@ -49,7 +49,7 @@ impl Token {
         else if let Ok(v) = s.parse::<f64>() {
             Self::Number(v)
         }
-        else if let "+" | "-" | "*" | "/" | "=" | "==" | "<" | "<=" | ">" | ">=" | "!=" = s.as_str() {
+        else if let "+" | "-" | "*" | "/" | "=" | "==" | "<" | "<=" | ">" | ">=" | "!=" | "&&" | "||" = s.as_str() {
             Self::Operator(s)
         }
         else if s == "(" {
