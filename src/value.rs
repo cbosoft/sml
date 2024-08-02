@@ -43,6 +43,14 @@ impl Value {
 }
 
 
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::String(s1), Self::String(s2)) => s1 == s2,
+            (Self::Bool(b1), Self::Bool(b2)) => b1 == b2,
+            (Self::Number(n1), Self::Number(n2)) => n1 == n2,
+            (Self::List(l1), Self::List(l2)) => l1 == l2,
+            _ => false
         }
     }
 }
