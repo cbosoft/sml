@@ -32,6 +32,17 @@ impl Value {
             Self::Bool(v) => *v,
             Self::Number(v) => *v != 0.0,
             Self::String(v) => v.is_empty(),
+
+    pub fn as_json(&self) -> JsonValue {
+        match &self {
+            Self::Bool(b) => JsonValue::Boolean(*b),
+            Self::String(s) => JsonValue::String(s.to_string()),
+            Self::Number(n) => JsonValue::Number((*n).into()),
+        }
+    }
+}
+
+
         }
     }
 }
