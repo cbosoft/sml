@@ -10,12 +10,12 @@ A very simple example `shakemyleg` machine:
 # flip_flip.sml
 
 state A:
-    when true:
+    always:
         outputs.bar = inputs.bar + 1
         changeto B
 
 state B:
-    when true:
+    always:
         outputs.bar = inputs.bar + 1
         changeto A
 ```
@@ -34,11 +34,11 @@ struct Foo {
 
 let src = r#"
 state A:
-    when true:
+    always:
         outputs.bar = inputs.bar + 1
         changeto B
 state B:
-    when true:
+    always:
         outputs.bar = inputs.bar + 1
         changeto A
 "#;
