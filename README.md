@@ -1,5 +1,4 @@
 ![tests badge](https://github.com/cbosoft/sml/actions/workflows/tests.yml/badge.svg)
-
 [![Written up - here!](https://img.shields.io/static/v1?label=Written+up&message=here!&color=2ea44f)](https://cmjb.tech/blog/2024/08/02/shakemyleg/)
 
 # SML - ShakeMyLeg, is that a State Machine Language?
