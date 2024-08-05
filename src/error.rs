@@ -34,6 +34,9 @@ pub enum SML_Error {
     #[error("Syntax error: {0}")]
     SyntaxError(String),
 
+    #[error("Compiler error (email the dev!): {0}")]
+    CompilerError(String),
+
 }
 
 

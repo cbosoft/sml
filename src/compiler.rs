@@ -240,7 +240,7 @@ struct StateData {
     pub branches: Vec<StateBranchData>,
     pub has_default: bool,
     pub has_otherwise: bool,
-    pub has_always: bool
+    pub has_always: bool,
 }
 
 impl StateData {
@@ -256,12 +256,38 @@ impl StateData {
     }
 }
 
-impl From<StateData> for State {
-    fn from(state_data: StateData) -> Self {
+impl TryFrom<StateData> for State {
+    type Error = SML_Error;
+
+    fn try_from(state_data: StateData) -> Result<Self, Self::Error> {
         let name = state_data.name;
         let head = state_data.head;
+        let default_branch = if state_data.has_default {
+            let mut idx = state_data.branches.len();
+            for (i, branch) in state_data.branches.iter().enumerate() {
+                if branch.is_default {
+                    idx = i;
+                    break;
+                }
+            }
+
+            // if idx still at initial value, no default branches were found.
+            if idx >= state_data.branches.len() {
+                panic!("state claimed to have default, but no default branches found!");
+            }
+            else {
+                Some(idx)
+            }
+        }
+        else {
+            None
+        };
         let body = state_data.branches.into_iter().map(|b| (b.condition, b.body, b.state_op)).collect();
-        State::new(name, head, body)
+        let mut rv = State::new(name, head, body);
+        if let Some(idx) = default_branch {
+            rv.set_default(idx)?;
+        }
+        Ok(rv)
     }
 }
 
@@ -423,7 +449,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                 }
                 else {
                     if let Some(state_data) = state_data.take() {
-                        states.push(state_data.into());
+                        states.push(state_data.try_into()?);
                         c_state_stack.pop();
                         false
                     }
@@ -504,7 +530,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
     }
 
     if let Some(state_data) = state_data {
-        states.push(state_data.into());
+        states.push(state_data.try_into()?);
     }
 
     let initial_state = states[0].name().clone();

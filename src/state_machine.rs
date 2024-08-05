@@ -46,14 +46,27 @@ impl StateMachine {
     }
 
     pub fn run<I: Serialize, O: DeserializeOwned>(&mut self, i: I) -> SML_Result<Option<O>> {
+        self.run_or_advance_state(i, false)
+    }
+
+    pub fn advance<I: Serialize, O: DeserializeOwned>(&mut self, i: I) -> SML_Result<Option<O>> {
+        self.run_or_advance_state(i, true)
+    }
+
+    fn run_or_advance_state<I: Serialize, O: DeserializeOwned>(&mut self, i: I, advance: bool) -> SML_Result<Option<O>> {
         // Using `DeserializeOwned` instead of `Deserialize` and dealing with lifetime issues
         // https://users.rust-lang.org/t/lifetime-confusion-with-function-parameter-serde-deserialize/76842
         let (rv, state_op) = match &self.current_state {
             Some(current_state) => {
                 let i = serde_json::to_string(&i)?;
                 let i = json::parse(&i)?;
-                let state = RefCount::clone(&current_state);
-                let (o, state_op) = (*state).run(&i, &mut self.globals, &self.default_head)?;
+                let state = Box::clone(&current_state);
+                let (o, state_op) = if advance {
+                    (*state).run_default(&i, &mut self.globals, &self.default_head)?
+                }
+                else {
+                    (*state).run(&i, &mut self.globals, &self.default_head)?
+                };
                 let o = o.to_string();
                 let o: O = serde_json::from_str(&o)?;
                 (Some(o), state_op)
