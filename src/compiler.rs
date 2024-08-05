@@ -611,7 +611,7 @@ state B:
         let i = Foo { bar: 0 };
         let o: Foo = sm.run(i).unwrap().unwrap();
         assert_eq!(o.bar, 1u64);
-        assert_eq!(sm.current_state(), "B".to_string());
+        assert_eq!(sm.current_state().unwrap(), "B".to_string());
     }
 
     #[test]
