@@ -42,8 +42,11 @@ impl StateMachine {
         }
     }
 
-    pub fn current_state(&self) -> String {
-        self.current_state.as_ref().unwrap().name().clone()
+    pub fn current_state(&self) -> Option<String> {
+        match self.current_state.as_ref() {
+            Some(s) => Some(s.name().clone()),
+            None => None
+        }
     }
 
     pub fn run<I: Serialize, O: DeserializeOwned>(&mut self, i: I) -> SML_Result<Option<O>> {
