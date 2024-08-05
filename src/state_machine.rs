@@ -99,11 +99,48 @@ impl StateMachine {
 #[cfg(test)]
 mod tests {
     use super::StateMachine;
+    use crate::compile;
+
+    use serde::{Serialize, Deserialize};
 
     fn is_send_sync<T: Send + Sync>() { }
 
     #[test]
     fn test_send_sync() {
         is_send_sync::<StateMachine>();
+    }
+
+    #[derive(Serialize)]
+    struct InFoo {
+        foo: u8
+    }
+
+    #[derive(Deserialize)]
+    struct OutBar {
+        bar: u8
+    }
+
+    #[test]
+    fn test_default() {
+        const SRC: &'static str = r#"
+state final:
+    when inputs.foo == 0:
+        outputs.bar = 1
+    when true:
+        outputs.bar = 2
+    otherwise:
+        default
+        outputs.bar = 3
+"#;
+        let mut sm = compile(SRC).unwrap();
+
+        let i = InFoo { foo: 1 };
+        let o: OutBar = sm.run(i).unwrap().unwrap();
+        assert_eq!(o.bar, 2u8); // second branch runs
+
+        // instead of running normally, advance.
+        let i = InFoo { foo: 1 };
+        let o: OutBar = sm.advance(i).unwrap().unwrap();
+        assert_eq!(o.bar, 3u8); // third branch runs
     }
 }
