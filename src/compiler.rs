@@ -8,7 +8,7 @@ use crate::operation::BinaryOperation;
 use crate::state::{State, StateOp};
 use crate::value::Value;
 use crate::StateMachine;
-use crate::refcount::RefCount;
+
 
 // Algorithm from: https://faculty.cs.niu.edu/~hutchins/csci241/eval.htm
 
@@ -511,7 +511,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
     let states_iter = states.into_iter();
     let mut states = HashMap::new();
     for state in states_iter {
-        states.insert(state.name().clone(), RefCount::new(state));
+        states.insert(state.name().clone(), Box::new(state));
     }
     let initial_state = states.get(&initial_state).unwrap().clone();
 

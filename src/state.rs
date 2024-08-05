@@ -40,6 +40,8 @@ pub struct State {
     body: Vec<(Expression, Vec<Expression>, StateOp)>,
 }
 
+pub type StateRef = Box<State>;
+
 impl State {
     pub fn new(name: String, head: Vec<Expression>, body: Vec<(Expression, Vec<Expression>, StateOp)>) -> Self {
         Self { name, head, body }

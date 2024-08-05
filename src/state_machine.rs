@@ -3,13 +3,9 @@ use std::collections::HashMap;
 use serde::{Serialize, de::DeserializeOwned};
 use json::JsonValue;
 
-use crate::refcount::RefCount;
 use crate::expression::Expression;
-use crate::state::{State, StateOp};
+use crate::state::{StateOp, StateRef};
 use crate::error::{SML_Error, SML_Result};
-
-
-type StateRef = RefCount<State>;
 
 
 #[derive(Clone, Debug)]
@@ -24,7 +20,7 @@ pub struct StateMachine {
 impl StateMachine {
     pub fn new(default_head: Vec<Expression>, states: HashMap<String, StateRef>, initial_state: StateRef) -> Self {
         let globals = json::object! { };
-        let current_state = Some(RefCount::clone(&initial_state));
+        let current_state = Some(Box::clone(&initial_state));
         Self { globals, default_head, states, current_state }
     }
 
@@ -37,7 +33,7 @@ impl StateMachine {
 
     fn get_state(&self, name: &String) -> SML_Result<StateRef> {
         match self.states.get(name) {
-            Some(state) => Ok(RefCount::clone(state)),
+            Some(state) => Ok(Box::clone(state)),
             None => Err(SML_Error::NonexistantState(name.clone()))
         }
     }
@@ -86,8 +82,9 @@ impl StateMachine {
     }
 }
 
-#[cfg(all(test, feature = "thread_safe"))]
-mod thread_safety_tests {
+
+#[cfg(test)]
+mod tests {
     use super::StateMachine;
 
     fn is_send_sync<T: Send + Sync>() { }
