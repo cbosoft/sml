@@ -1,6 +1,14 @@
-use std::{collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
-use crate::{error::{SML_Error, SML_Result}, expression::Expression, identifier::Identifier, operation::BinaryOperation, state::{State, StateOp}, value::Value, StateMachine};
+
+use crate::error::{SML_Error, SML_Result};
+use crate::expression::Expression;
+use crate::identifier::Identifier;
+use crate::operation::BinaryOperation;
+use crate::state::{State, StateOp};
+use crate::value::Value;
+use crate::StateMachine;
+use crate::refcount::RefCount;
 
 // Algorithm from: https://faculty.cs.niu.edu/~hutchins/csci241/eval.htm
 
@@ -41,7 +49,7 @@ impl Token {
         else if let Ok(v) = s.parse::<f64>() {
             Self::Number(v)
         }
-        else if let "+" | "-" | "*" | "/" | "=" | "==" | "<" | "<=" | ">" | ">=" | "!=" = s.as_str() {
+        else if let "+" | "-" | "*" | "/" | "=" | "==" | "<" | "<=" | ">" | ">=" | "!=" | "&&" | "||" | "contains" = s.as_str() {
             Self::Operator(s)
         }
         else if s == "(" {
@@ -226,18 +234,68 @@ fn expr_from_str(s: &str, lineno: usize) -> SML_Result<Expression> {
 }
 
 
+struct StateData {
+    pub name: String,
+    pub head: Vec<Expression>,
+    pub branches: Vec<StateBranchData>,
+    pub has_default: bool,
+    pub has_otherwise: bool,
+    pub has_always: bool
+}
+
+impl StateData {
+    fn new(name: String) -> Self {
+        Self {
+            name,
+            head: Vec::new(),
+            branches: Vec::new(),
+            has_default: false,
+            has_otherwise: false,
+            has_always: false,
+        }
+    }
+}
+
+impl From<StateData> for State {
+    fn from(state_data: StateData) -> Self {
+        let name = state_data.name;
+        let head = state_data.head;
+        let body = state_data.branches.into_iter().map(|b| (b.condition, b.body, b.state_op)).collect();
+        State::new(name, head, body)
+    }
+}
+
+struct StateBranchData {
+    condition: Expression,
+    body: Vec<Expression>,
+    state_op: StateOp,
+    is_default: bool,
+}
+
+impl StateBranchData {
+    fn new(condition: Expression) -> Self {
+        Self {
+            condition,
+            body: Vec::new(),
+            state_op: StateOp::Stay,
+            is_default: false,
+        }
+    }
+}
+
+
 /// Take a string of SML source and compile to state machine.
 /// ```
 /// use shakemyleg::compile;
 ///
 /// let src = r#"
 /// state init:
-///   when inputs.b < 10:
+///   when inputs.b <= 10:
 ///     outputs.b = inputs.b + 1
-///   when inputs.b >= 10:
+///   otherwise:
 ///     changeto second
 /// state second:
-///   when true:
+///   always:
 ///     outputs.c = inputs.c + 2
 /// "#;
 ///
@@ -247,10 +305,10 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
     let mut c_state_stack = vec![CompileState::TopLevel];
     let lines: Vec<_> = s.lines().collect();
     let mut i = 0usize;
-    let mut state_data = None;
-    let mut state_branch_data = None;
+    let mut state_data: Option<StateData> = None;
+    let mut state_branch_data: Option<StateBranchData> = None;
     let mut default_head = Vec::new();
-    let mut states = Vec::new();
+    let mut states: Vec<State> = Vec::new();
     let mut leading_ws = None;
 
     let nlines = lines.len();
@@ -277,7 +335,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                 // 
                 if let Some(sname_colon) = line.strip_prefix("state ") {
                     if let Some(sname) = sname_colon.strip_suffix(":") {
-                        state_data = Some((sname.to_string(), Vec::new(), Vec::new()));
+                        state_data = Some(StateData::new(sname.to_string()));
                         c_state_stack.push(CompileState::State);
                         true
                     }
@@ -307,25 +365,65 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                             c_state_stack.push(CompileState::StateHead);
                         }
                         else if let Some(expr_colon) = line_trim.strip_prefix("when ") {
+                            let has_always = state_data.as_ref().unwrap().has_always;
+                            let has_otherwise = state_data.as_ref().unwrap().has_otherwise;
+                            if has_always || has_otherwise {
+                                return Err(SML_Error::SyntaxError(format!("Branch defined after always or otherwise on line {i}")));
+                            }
+
                             if let Some(expr) = expr_colon.strip_suffix(":") {
                                 let cond = expr_from_str(expr, i)?;
-                                state_branch_data = Some((cond, Vec::new(), StateOp::Stay));
+                                state_branch_data = Some(StateBranchData::new(cond));
                                 c_state_stack.push(CompileState::StateBranch);
                             }
                             else {
                                 return Err(SML_Error::SyntaxError(format!("Missing colon on line {i}:{line}")));
                             }
                         }
+                        else if line_trim == "always:" {
+                            let has_always = state_data.as_ref().unwrap().has_always;
+                            let has_otherwise = state_data.as_ref().unwrap().has_otherwise;
+                            if has_always || has_otherwise {
+                                return Err(SML_Error::SyntaxError(format!("Branch defined after always or otherwise on line {i}.")));
+                            }
+
+                            let has_other_branches = state_data.as_ref().unwrap().branches.len() > 0;
+                            if has_other_branches {
+                                return Err(SML_Error::SyntaxError(format!("Always defined after another branch on line {i}. Always must be the other branch.")));
+                            }
+
+                            let cond = Expression::Value(Value::Bool(true));
+                            state_branch_data = Some(StateBranchData::new(cond));
+                            state_data.as_mut().unwrap().has_always = true;
+                            c_state_stack.push(CompileState::StateBranch);
+                        }
+                        else if line_trim == "otherwise:" {
+                            let has_always = state_data.as_ref().unwrap().has_always;
+                            let has_otherwise = state_data.as_ref().unwrap().has_otherwise;
+                            if has_always || has_otherwise {
+                                return Err(SML_Error::SyntaxError(format!("Branch defined after always or otherwise on line {i}.")));
+                            }
+
+                            let has_other_branches = state_data.as_ref().unwrap().branches.len() > 0;
+                            if !has_other_branches {
+                                return Err(SML_Error::SyntaxError(format!("Otherwise defined alone on line {i}. Otherwise must come after at least one other branch.")));
+                            }
+
+                            let cond = Expression::Value(Value::Bool(true));
+                            state_branch_data = Some(StateBranchData::new(cond));
+                            state_data.as_mut().unwrap().has_otherwise = true;
+                            c_state_stack.push(CompileState::StateBranch);
+                        }
                         else {
                             eprintln!("{}", lines[i-1]);
-                            return Err(SML_Error::SyntaxError(format!("Expect head or when after state intro on line {i}:{line}")));
+                            return Err(SML_Error::SyntaxError(format!("Expected ['head:', 'when <state>:', 'always:', 'otherwise:'] after state intro on line {i}:{line}")));
                         }
                     }
                     true
                 }
                 else {
-                    if let Some((name, head, body)) = state_data.take() {
-                        states.push(State::new(name, head, body));
+                    if let Some(state_data) = state_data.take() {
+                        states.push(state_data.into());
                         c_state_stack.pop();
                         false
                     }
@@ -351,7 +449,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                 if line.starts_with(&leading_ws.as_ref().unwrap().1) {
                     let line = line.trim_start();
                     let expr = expr_from_str(line, i)?;
-                    state_data.as_mut().unwrap().1.push(expr);
+                    state_data.as_mut().unwrap().head.push(expr);
                     true
                 }
                 else {
@@ -363,23 +461,33 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                 if line.starts_with(&leading_ws.as_ref().unwrap().1) {
                     let line = line.trim_start();
                     if let Some(state_name) = line.strip_prefix("changeto ") {
-                        state_branch_data.as_mut().unwrap().2 = StateOp::ChangeTo(state_name.to_string());
+                        state_branch_data.as_mut().unwrap().state_op = StateOp::ChangeTo(state_name.to_string());
                     }
                     else if line == "end" {
-                        state_branch_data.as_mut().unwrap().2 = StateOp::End;
+                        state_branch_data.as_mut().unwrap().state_op = StateOp::End;
                     }
                     else if line == "stay" {
-                        state_branch_data.as_mut().unwrap().2 = StateOp::Stay;
+                        state_branch_data.as_mut().unwrap().state_op = StateOp::Stay;
+                    }
+                    else if line == "default" {
+                        if state_data.as_ref().unwrap().has_default {
+                            let name = &state_data.as_ref().unwrap().name;
+                            return Err(SML_Error::SyntaxError(format!("Multiple branches marked as default in state {name}. On line {i}.")));
+                        }
+                        else {
+                            state_branch_data.as_mut().unwrap().is_default = true;
+                            state_data.as_mut().unwrap().has_default = true;
+                        }
                     }
                     else {
                         let expr = expr_from_str(line, i)?;
-                        state_branch_data.as_mut().unwrap().1.push(expr);
+                        state_branch_data.as_mut().unwrap().body.push(expr);
                     }
                     true
                 }
                 else {
                     let branch = state_branch_data.take().unwrap();
-                    state_data.as_mut().unwrap().2.push(branch);
+                    state_data.as_mut().unwrap().branches.push(branch);
                     c_state_stack.pop();
                     false
                 }
@@ -392,18 +500,18 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
     }
 
     if let Some(branch) = state_branch_data {
-        state_data.as_mut().unwrap().2.push(branch);
+        state_data.as_mut().unwrap().branches.push(branch);
     }
 
-    if let Some((name, head, body)) = state_data {
-        states.push(State::new(name, head, body));
+    if let Some(state_data) = state_data {
+        states.push(state_data.into());
     }
 
     let initial_state = states[0].name().clone();
     let states_iter = states.into_iter();
     let mut states = HashMap::new();
     for state in states_iter {
-        states.insert(state.name().clone(), Rc::new(state));
+        states.insert(state.name().clone(), RefCount::new(state));
     }
     let initial_state = states.get(&initial_state).unwrap().clone();
 
@@ -555,9 +663,71 @@ state B:
         let _ = compile(SRC).unwrap();
     }
 
+    #[test]
+    fn test_compile_always_otherwise_1() {
+        const SRC: &'static str = r#"
+state A:
+    always:
+        changeto B
+state B:
+    when false:
+        changeto A
+    otherwise:
+        changeto A
+"#;
+        let _ = compile(SRC).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_compile_always_otherwise_2() {
+        const SRC: &'static str = r#"
+state A:
+    always:
+        changeto B
+    otherwise:
+        changeto A
+state B:
+    always:
+        changeto A
+"#;
+        let _ = compile(SRC).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_compile_always_otherwise_3() {
+        const SRC: &'static str = r#"
+state A:
+    otherwise:
+        changeto B
+    when true:
+        changeto A
+state B:
+    always:
+        changeto A
+"#;
+        let _ = compile(SRC).unwrap();
+    }
+
+    #[test]
+    fn test_compile_always_otherwise_4() {
+        const SRC: &'static str = r#"
+state A:
+    when false:
+        changeto A
+    otherwise:
+        changeto B
+state B:
+    always:
+        changeto A
+"#;
+        let _ = compile(SRC).unwrap();
+    }
+
     #[derive(Serialize)]
     struct InFoo {
-        foo: u8
+        foo: Vec<u8>
     }
 
     #[derive(Deserialize)]
@@ -569,19 +739,56 @@ state B:
     fn test_compile_end() {
         const SRC: &'static str = r#"
 state final:
-    when true:
+    always:
         outputs.bar = 1
         end
 "#;
         let mut sm = compile(SRC).unwrap();
 
-        let i = InFoo { foo: 0u8 };
+        let i = InFoo { foo: vec![0u8] };
         let o: OutBar = sm.run(i).unwrap().unwrap();
         assert_eq!(o.bar, 1u8);
 
-        let i = InFoo { foo: 0u8 };
+        let i = InFoo { foo: vec![0u8] };
         let rv: SML_Result<Option<OutBar>> = sm.run(i);
         assert!(matches!(rv, Ok(None)));
+    }
+
+    #[test]
+    fn test_compile_contais_1() {
+        const SRC: &'static str = r#"
+state final:
+    when inputs.foo contains 0:
+        outputs.bar = 1
+    otherwise:
+        outputs.bar = 0
+"#;
+        let mut sm = compile(SRC).unwrap();
+
+        let i = InFoo { foo: vec![0, 1, 2, 3] };
+        let o: OutBar = sm.run(i).unwrap().unwrap();
+        assert_eq!(o.bar, 1u8);
+        
+        let i = InFoo { foo: vec![1, 2, 3] };
+        let o: OutBar = sm.run(i).unwrap().unwrap();
+        assert_eq!(o.bar, 0u8);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_compile_contais_2() {
+        const SRC: &'static str = r#"
+state final:
+    when outputs.bar contains 0:
+        outputs.bar = 1
+    otherwise:
+        outputs.bar = 0
+"#;
+        let mut sm = compile(SRC).unwrap();
+
+        let i = InFoo { foo: vec![0, 1, 2, 3] };
+        let o: OutBar = sm.run(i).unwrap().unwrap();
+        assert_eq!(o.bar, 1u8);
     }
 
 }

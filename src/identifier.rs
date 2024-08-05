@@ -86,12 +86,7 @@ impl Identifier {
             store = &mut store[node];
         }
 
-        let json_value = match v {
-            Value::Bool(b) => JsonValue::Boolean(*b),
-            Value::String(s) => JsonValue::String(s.to_string()),
-            Value::Number(n) => JsonValue::Number((*n).into()),
-        };
-
+        let json_value = v.as_json();
         store[key.unwrap()] = json_value;
 
         Ok(())

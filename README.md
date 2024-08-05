@@ -1,4 +1,6 @@
 ![tests badge](https://github.com/cbosoft/sml/actions/workflows/tests.yml/badge.svg)
+[![Written up - here!](https://img.shields.io/static/v1?label=Written+up&message=here!&color=2ea44f)](https://cmjb.tech/blog/2024/08/02/shakemyleg/)
+
 # SML - ShakeMyLeg, is that a State Machine Language?
 
 A simple state machine definition language and interpreter.
@@ -10,12 +12,12 @@ A very simple example `shakemyleg` machine:
 # flip_flip.sml
 
 state A:
-    when true:
+    always:
         outputs.bar = inputs.bar + 1
         changeto B
 
 state B:
-    when true:
+    always:
         outputs.bar = inputs.bar + 1
         changeto A
 ```
@@ -34,11 +36,11 @@ struct Foo {
 
 let src = r#"
 state A:
-    when true:
+    always:
         outputs.bar = inputs.bar + 1
         changeto B
 state B:
-    when true:
+    always:
         outputs.bar = inputs.bar + 1
         changeto A
 "#;

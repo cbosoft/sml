@@ -136,7 +136,7 @@ dependencies = [
 
 [[package]]
 name = "shakemyleg"
-version = "2.2.1"
+version = "2.4.0"
 dependencies = [
  "itertools",
  "json",
