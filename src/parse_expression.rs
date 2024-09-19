@@ -222,4 +222,49 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_expr_parse_negate() {
+        let i = "-1";
+        let o = expr_from_str(i, 0).unwrap();
+        match o {
+            Expression::Unary(UnaryOperation::Negate, v) => {
+                match *v {
+                    Expression::Value(Value::Number(_)) => (),
+                    _ => {panic!()},
+                }
+            },
+            _ => {panic!()}
+        }
+    }
+
+    #[test]
+    fn test_expr_parse_power() {
+        let i = "2 ^2";
+        let o = expr_from_str(i, 0).unwrap();
+        match o {
+            Expression::Binary(BinaryOperation::Power, l, r) => {
+                match (*l, *r) {
+                    (Expression::Value(Value::Number(_)), Expression::Value(Value::Number(_))) => (),
+                    _ => {panic!()},
+                }
+            },
+            _ => {panic!()}
+        }
+    }
+
+    #[test]
+    fn test_expr_parse_brackets() {
+        let i = "2.3 ^(2.5 + 1)";
+        let o = expr_from_str(i, 0).unwrap();
+        match o {
+            Expression::Binary(BinaryOperation::Power, l, r) => {
+                match (*l, *r) {
+                    (Expression::Value(Value::Number(_)), Expression::Binary(BinaryOperation::Add, _, _)) => (),
+                    _ => {panic!()},
+                }
+            },
+            _ => {panic!()}
+        }
+    }
+
 }
