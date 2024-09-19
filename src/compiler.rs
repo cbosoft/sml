@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
+use chumsky::prelude::*;
 
 use crate::error::{SML_Error, SML_Result};
 use crate::expression::Expression;
 use crate::identifier::Identifier;
+use crate::operation::UnaryOperation;
 use crate::operation::BinaryOperation;
 use crate::state::{State, StateOp};
 use crate::value::Value;
 use crate::StateMachine;
 
-
-// Algorithm from: https://faculty.cs.niu.edu/~hutchins/csci241/eval.htm
 
 enum CompileState {
     TopLevel, // "state <name>:" or "default head:"
@@ -20,216 +20,96 @@ enum CompileState {
     DefaultHead,
 }
 
-#[derive(Debug, PartialEq)]
-enum Token {
-    Identifier(String),
-    Number(f64),
-    String(String),
-    Operator(String),
-    Boolean(bool),
-    OpenParens,
-    CloseParens,
-}
 
-impl Token {
-    pub fn from_string(s: String) -> Self {
-        if s.starts_with("'") || s.starts_with("\"") {
-            let chars: Vec<_> = s.chars().collect();
+fn expr_parser() -> impl Parser<char, Expression, Error = Simple<char>> {
+    let kw_nc = |s: &'static str| { text::keyword(s).map(|()| s.to_string() ) };
 
-            // ensure quotes match up
-            if chars[0] != chars[chars.len() - 1] {
-                panic!();
+    recursive(|e| {
+        let num = text::int(10)
+            //.then(just('.').then(text::digits(10)).or_not())
+            .map(| s: String | Expression::Value(Value::Number(s.parse().unwrap())))
+            .padded()
+            ;
+
+        let bul = choice((
+            kw_nc("true"),
+            kw_nc("false"),
+        )).map(|s| Expression::Value(Value::Bool(s == "true")));
+
+        let ident = choice((
+                kw_nc("inputs"),
+                kw_nc("outputs"),
+                kw_nc("globals"),
+            ))
+            .then(just('.'))
+            .then(text::ident())
+            .map(|((sa, c), sb): ((String, char), String)| { format!("{sa}{c}{sb}") })
+            .map(|s: String| { Expression::Identifier(Identifier::from_str(s).unwrap())})
+            .padded()
+            ;
+
+        let atom = num.or(bul).or(ident.clone()).or(e.delimited_by(just('('), just(')')));
+
+        let op = |c| just(c).padded();
+        let op2 = |s: &'static str| kw_nc(s).padded();
+
+        let unary = op('-')
+            .repeated()
+            .then(atom)
+            .foldr(|_op, rhs| Expression::Unary(UnaryOperation::Negate, Box::new(rhs)));
+
+        let curry_binary = |o: BinaryOperation | {
+            |lhs: Expression, rhs: Expression| {
+                Expression::Binary(o, Box::new(lhs), Box::new(rhs))
             }
+        };
 
-            // remove quotes (first and last chars)
-            let s: String = chars[1..(chars.len() - 1)].iter().collect();
+        let product = unary.clone()
+            .then(choice((
+                    op('*').to(curry_binary(BinaryOperation::Multiply)),
+                    op('/').to(curry_binary(BinaryOperation::Divide)),
+                ))
+                .then(unary)
+                .repeated())
+            .foldl(|lhs, (op, rhs)| op(lhs, rhs));
 
-            Self::String(s)
-        }
-        else if let Ok(v) = s.parse::<f64>() {
-            Self::Number(v)
-        }
-        else if let "+" | "-" | "*" | "/" | "=" | "==" | "<" | "<=" | ">" | ">=" | "!=" | "&&" | "||" | "contains" = s.as_str() {
-            Self::Operator(s)
-        }
-        else if s == "(" {
-            Self::OpenParens
-        }
-        else if s == ")" {
-            Self::CloseParens
-        }
-        else if s == "true" {
-            Self::Boolean(true)
-        }
-        else if s == "false" {
-            Self::Boolean(false)
-        }
-        else {
-            Self::Identifier(s)
-        }
-    }
+        let sum = product.clone()
+            .then(op('+').to(curry_binary(BinaryOperation::Add))
+                    .or(op('-').to(curry_binary(BinaryOperation::Subtract)))
+                    .then(product)
+                    .repeated())
+            .foldl(|lhs, (op, rhs)| op(lhs, rhs));
 
-    pub fn precedence(&self) -> u8 {
-        match self {
-            Token::OpenParens | Token::CloseParens => 0,
-            Token::Operator(op) => {
-                match op.as_str() {
-                    "*" | "/" | "^" => 1,
-                    "+" | "-" => 2,
-                    "==" | "<" | "<=" | ">" | ">=" => 3,
-                    "&&" | "||" => 3,
-                    "=" => 4,
-                    _ => 4,
-                }
-            },
-            Token::Identifier(_) | Token::Boolean(_) | Token::Number(_) | Token::String(_) => 5
-        }
-    }
-}
+        let cmp = sum.clone()
+            .then(choice((
+                    op2("==").to(curry_binary(BinaryOperation::Equal)),
+                    op2("!=").to(curry_binary(BinaryOperation::NotEqual)),
+                    op('<').to(curry_binary(BinaryOperation::LessThan)),
+                    op2("<=").to(curry_binary(BinaryOperation::LessThanOrEqual)),
+                    op('>').to(curry_binary(BinaryOperation::GreaterThan)),
+                    op2(">=").to(curry_binary(BinaryOperation::GreaterThanOrEqual)),
+                    op2("contains").to(curry_binary(BinaryOperation::Contains)),
+                ))
+                .then(sum)
+                .repeated())
+            .foldl(|lhs, (op, rhs)| op(lhs, rhs));
 
+        let assign = ident
+            .then(op('=').to(curry_binary(BinaryOperation::Assign))
+                .then(cmp.clone())
+                .repeated())
+            .foldl(|lhs, (op, rhs)| op(lhs, rhs));
 
-/// Convert an expression string into a list of tokens.
-/// "a = 1+1" -> [a, =, 1, +, 1]
-fn tokenise(s: &str, lineno: usize) -> SML_Result<Vec<Token>> {
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    let mut quote_stack = Vec::new();
-    let mut pc = ' ';
-    
-    fn create_new_token(token: &mut String, tokens: &mut Vec<Token>) {
-        // only create new token if current is not empty
-        if !token.is_empty() {
-            let token = std::mem::take(token);
-            let token = Token::from_string(token);
-            tokens.push(token);
-        }
-    }
-
-    for (col, c) in s.chars().enumerate() {
-        match (quote_stack.is_empty(), pc, c) {
-            (true, _, ' ' | '\t') => {
-                create_new_token(&mut current, &mut tokens);
-            }
-            (_, '\\', '\\') => { current.push(c); },
-            (_, _, '\\') => {}, // escape char; wait to see what's next
-            (_, '\\', '"' | '\'') => { current.push(c); },
-            (_, _, '"' | '\'') => { 
-                current.push(c);
-                if quote_stack.is_empty() {
-                    quote_stack.push((c, col));
-                }
-                else if quote_stack.last().unwrap().0 == c {
-                    let _ = quote_stack.pop();
-                    if quote_stack.is_empty() {
-                        // that quote closes the token!
-                        create_new_token(&mut current, &mut tokens);
-                    }
-                }
-                else {
-                    quote_stack.push((c, col));
-                }
-            },
-            (true, _, '+' | '-' | '*' | '/' | '^' | '(' | ')') => {
-                create_new_token(&mut current, &mut tokens);
-                current.push(c);
-                create_new_token(&mut current, &mut tokens);
-            }
-            // TODO: what if no whitespace between 2-char operators?
-            _ => {
-                current.push(c);
-            }
-        }
-        pc = c;
-    }
-
-    if !quote_stack.is_empty() {
-        let cols: Vec<_> = quote_stack.iter().map(|qi| { format!("{}", qi.1) }).collect();
-        let s = if cols.len() > 1 { "s" } else { "" };
-        let cols = cols.join(", ");
-        return Err(SML_Error::SyntaxError(format!("Unmatched quote on line {lineno}, col{s} {cols}.")));
-    }
-
-    if !current.is_empty() {
-        let token = Token::from_string(current);
-        tokens.push(token);
-    }
-
-    Ok(tokens)
+        assign.or(cmp).padded()
+    }).then_ignore(end())
 }
 
 
 fn expr_from_str(s: &str, lineno: usize) -> SML_Result<Expression> {
-    let infix = tokenise(s, lineno)?;
-    let mut postfix = Vec::new();
-    let mut stack = Vec::new();
-
-    // infix -> postfix
-    for token in infix.into_iter() {
-        match &token {
-            Token::Number(_) | Token::Identifier(_) | Token::String(_) | Token::Boolean(_) => { postfix.push(token); },
-            Token::OpenParens => { stack.push(token); },
-            Token::CloseParens => { 
-                if stack.is_empty() {
-                    return Err(SML_Error::SyntaxError("unexpected right parens.".to_string()));
-                }
-                while !stack.is_empty() && !matches!(stack.last().unwrap(), Token::OpenParens) {
-                    postfix.push(stack.pop().unwrap());
-                }
-                if !matches!(stack.last().unwrap(), Token::OpenParens) {
-                    return Err(SML_Error::SyntaxError("unexpected right parens.".to_string()));
-                }
-                let _ = stack.pop().unwrap();
-            },
-            Token::Operator(_) => {
-                if stack.is_empty() || matches!(stack.last().unwrap(), Token::OpenParens) {
-                    stack.push(token);
-                }
-                else {
-                    while !stack.is_empty() && !matches!(stack.last().unwrap(), Token::OpenParens) && (stack.last().unwrap().precedence() <= token.precedence()) {
-                        postfix.push(stack.pop().unwrap());
-                    }
-                    stack.push(token);
-                }
-            }
-        }
-    }
-
-    for token in stack.into_iter().rev() {
-        match token {
-            Token::OpenParens => {
-                return Err(SML_Error::SyntaxError("unbalanced parens.".to_string()));
-            },
-            _ => { postfix.push(token); }
-        }
-    }
-
-    // postfix -> call tree
-    let mut exp_stack = Vec::new();
-    for token in postfix.into_iter() {
-        match token {
-            Token::Number(v) => { let expr = Expression::Value(Value::Number(v)); exp_stack.push(expr); }
-            Token::String(s) => { let expr = Expression::Value(Value::String(s)); exp_stack.push(expr); }
-            Token::Boolean(b) => { let expr = Expression::Value(Value::Bool(b)); exp_stack.push(expr); }
-            Token::Identifier(i) => { let expr = Expression::Identifier(Identifier::from_str(i)?); exp_stack.push(expr); }
-            Token::OpenParens | Token::CloseParens => { eprintln!("{token:?}") },
-            Token::Operator(op) => {
-                let a = exp_stack.pop().unwrap();
-                let b = exp_stack.pop().unwrap();
-                let expr = Expression::Binary(BinaryOperation::from_str(op)?, Box::new(b), Box::new(a));
-                exp_stack.push(expr);
-            }
-        }
-    }
-
-    // there should only be one value in the stack
-    if exp_stack.len() > 1 {
-        Err(SML_Error::SyntaxError("Too many expressions left!".to_string()))
-    }
-    else if exp_stack.len() == 0 {
-        Err(SML_Error::SyntaxError("No expression!".to_string()))
-    }
-    else {
-        Ok(exp_stack.pop().unwrap())
+    let parser = expr_parser();
+    match parser.parse(s) {
+        Err(e) => Err(SML_Error::CompilerError(format!("Failed to parse expr: {e:?}"))),
+        Ok(e) => Ok(e),
     }
 }
 
@@ -555,67 +435,30 @@ mod tests {
     use super::*;
     use serde::{Serialize, Deserialize};
 
+    #[test]
+    fn test_expr_parse_1() {
+        let i = "1";
+        let o = expr_from_str(i, 0).unwrap();
+        assert!(matches!(o, Expression::Value(Value::Number(_))));
+    }
+
+    #[test]
+    fn test_expr_parse_2() {
+        let i = "  1 ";
+        let o = expr_from_str(i, 0).unwrap();
+        assert!(matches!(o, Expression::Value(Value::Number(_))));
+    }
+
+    #[test]
+    fn test_expr_parse_3() {
+        let i = "1 + 1";
+        let o = expr_from_str(i, 0).unwrap();
+        assert!(matches!(o, Expression::Binary(BinaryOperation::Add, _, _)));
+    }
+
     #[derive(Serialize, Deserialize)]
     struct Foo {
         pub bar: u64,
-    }
-
-    #[test]
-    fn test_tokenise_1() {
-        let input = "a = 1+1";
-        let expected_output = vec![
-            Token::Identifier("a".to_string()),
-            Token::Operator("=".to_string()),
-            Token::Number(1f64),
-            Token::Operator("+".to_string()),
-            Token::Number(1f64),
-        ];
-        let output = tokenise(input, 0).unwrap();
-        assert_eq!(output, expected_output);
-    }
-
-    #[test]
-    fn test_tokenise_2() {
-        let input = r#"a = "1 + \"1\"""#;
-        let expected_output = vec![
-            Token::Identifier("a".to_string()),
-            Token::Operator("=".to_string()),
-            Token::String("1 + \"1\"".to_string()),
-        ];
-        let output = tokenise(input, 0).unwrap();
-        assert_eq!(output, expected_output);
-    }
-
-    #[test]
-    fn test_tokenise_3() {
-        let input = r#"a = 1 == b"#;
-        let expected_output = vec![
-            Token::Identifier("a".to_string()),
-            Token::Operator("=".to_string()),
-            Token::Number(1f64),
-            Token::Operator("==".to_string()),
-            Token::Identifier("b".to_string()),
-        ];
-        let output = tokenise(input, 0).unwrap();
-        assert_eq!(output, expected_output);
-    }
-
-    #[test]
-    fn test_tokenise_4() {
-        let input = r#"a = (1 + b)*3"#;
-        let expected_output = vec![
-            Token::Identifier("a".to_string()),
-            Token::Operator("=".to_string()),
-            Token::OpenParens,
-            Token::Number(1f64),
-            Token::Operator("+".to_string()),
-            Token::Identifier("b".to_string()),
-            Token::CloseParens,
-            Token::Operator("*".to_string()),
-            Token::Number(3f64),
-        ];
-        let output = tokenise(input, 0).unwrap();
-        assert_eq!(output, expected_output);
     }
 
     #[test]
@@ -781,7 +624,7 @@ state final:
     }
 
     #[test]
-    fn test_compile_contais_1() {
+    fn test_compile_contains_1() {
         const SRC: &'static str = r#"
 state final:
     when inputs.foo contains 0:
@@ -802,7 +645,7 @@ state final:
 
     #[test]
     #[should_panic]
-    fn test_compile_contais_2() {
+    fn test_compile_contains_2() {
         const SRC: &'static str = r#"
 state final:
     when outputs.bar contains 0:

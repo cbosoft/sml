@@ -8,6 +8,7 @@ edition = "2021"
 authors = ["Christopher Boyle"]
 
 [dependencies]
+chumsky = "0.9.3"
 itertools = "0.13.0"
 json = "0.12.4"
 lazy_static = "1.5.0"
