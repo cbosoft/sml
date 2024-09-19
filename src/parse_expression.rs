@@ -66,6 +66,7 @@ fn expr_parser() -> impl Parser<char, Expression, Error = Simple<char>> {
 
         let op = |c| just(c).padded();
         let op2 = |c| just(c).then(just('=')).padded();
+        let opd = |c: char| just(c).then(just(c)).padded();
         // Why doesn't this work? :(
         // let opn = |s: &'static str| text::keyword(s).padded();
 
@@ -98,6 +99,8 @@ fn expr_parser() -> impl Parser<char, Expression, Error = Simple<char>> {
 
         let misc_binary = sum.clone()
             .then(choice((
+                    opd('&').to(curry_binary(BinaryOperation::And)),
+                    opd('|').to(curry_binary(BinaryOperation::Or)),
                     op2('=').to(curry_binary(BinaryOperation::Equal)),
                     op2('!').to(curry_binary(BinaryOperation::NotEqual)),
                     op2('<').to(curry_binary(BinaryOperation::LessThanOrEqual)),
