@@ -200,7 +200,7 @@ mod tests {
             Expression::Binary(BinaryOperation::Assign, l, r) => {
                 match (*l, *r) {
                     (Expression::Identifier(_), Expression::Value(Value::String(_))) => (),
-                    _ => {panic!()} ,
+                    _ => {panic!()},
                 }
             },
             _ => {panic!()}
@@ -215,7 +215,7 @@ mod tests {
             Expression::Binary(BinaryOperation::Assign, l, r) => {
                 match (*l, *r) {
                     (Expression::Identifier(_), Expression::Value(Value::List(_))) => (),
-                    _ => {panic!()} ,
+                    _ => {panic!()},
                 }
             },
             _ => {panic!()}
