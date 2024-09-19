@@ -90,7 +90,7 @@ impl BinaryOperation {
             "||" => Self::Or,
 
             // List
-            "contains" => Self::Contains,
+            "^=" => Self::Contains,
 
             s => { return Err(SML_Error::SyntaxError(format!("Invalid binary operation {s}"))); }
         };
