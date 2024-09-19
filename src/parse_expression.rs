@@ -92,6 +92,7 @@ fn expr_parser() -> impl Parser<char, Expression, Error = Simple<char>> {
             .then(choice((
                     op('*').to(curry_binary(BinaryOperation::Multiply)),
                     op('/').to(curry_binary(BinaryOperation::Divide)),
+                    op('^').to(curry_binary(BinaryOperation::Power)),
                 ))
                 .then(unary)
                 .repeated())
