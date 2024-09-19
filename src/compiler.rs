@@ -198,7 +198,7 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
 
                             let has_other_branches = state_data.as_ref().unwrap().branches.len() > 0;
                             if has_other_branches {
-                                return Err(SML_Error::SyntaxError(format!("Always defined after another branch on line {i}. Always must be the other branch.")));
+                                return Err(SML_Error::SyntaxError(format!("Always defined after another branch on line {i}. Always must be the only branch.")));
                             }
 
                             let cond = Expression::Value(Value::Bool(true));
