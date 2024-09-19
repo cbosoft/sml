@@ -11,17 +11,42 @@ use crate::operation::BinaryOperation;
 fn expr_parser() -> impl Parser<char, Expression, Error = Simple<char>> {
     let kw_nc = |s: &'static str| { text::keyword(s).map(|()| s.to_string() ) };
 
-    recursive(|e| {
+    let value = recursive(|val|{
         let num = text::int(10)
             //.then(just('.').then(text::digits(10)).or_not())
-            .map(| s: String | Expression::Value(Value::Number(s.parse().unwrap())))
+            .map(| s: String | Value::Number(s.parse().unwrap()))
             .padded()
             ;
 
         let bul = choice((
-            kw_nc("true"),
-            kw_nc("false"),
-        )).map(|s| Expression::Value(Value::Bool(s == "true")));
+                kw_nc("true"),
+                kw_nc("false"),
+            ))
+            .map(|s| Value::Bool(s == "true"))
+            .padded()
+            ;
+
+        let str_ = just('"')
+            .ignore_then(none_of("\"").repeated())
+            .then_ignore(just('"'))
+            .collect::<String>()
+            .map(|s: String| Value::String(s))
+            .padded()
+            ;
+
+        let list = just('[')
+            .ignore_then(val.clone().then_ignore(just(',').or_not()).repeated().at_least(1))
+            .then_ignore(just(']'))
+            .collect::<Vec<Value>>()
+            .map(|v| Value::List(v.into_iter().map(|vi| Box::new(vi)).collect() ))
+            .padded()
+            ;
+
+        num.or(bul).or(str_).or(list)
+
+    });
+
+    recursive(|e| {
 
         let ident = choice((
                 kw_nc("inputs"),
@@ -35,13 +60,9 @@ fn expr_parser() -> impl Parser<char, Expression, Error = Simple<char>> {
             .padded()
             ;
 
-        let str_ = just('"')
-            .ignore_then(none_of("\"").repeated())
-            .then_ignore(just('"'))
-            .collect::<String>()
-            .map(|s: String| Expression::Value(Value::String(s)));
-
-        let atom = num.or(bul).or(str_).or(ident.clone()).or(e.delimited_by(just('('), just(')')));
+        let atom = value.map(|v| Expression::Value(v))
+            .or(ident)
+            .or(e.delimited_by(just('('), just(')')));
 
         let op = |c| just(c).padded();
         let op2 = |c| just(c).then(just('=')).padded();
@@ -168,6 +189,21 @@ mod tests {
             Expression::Binary(BinaryOperation::Assign, l, r) => {
                 match (*l, *r) {
                     (Expression::Identifier(_), Expression::Value(Value::String(_))) => (),
+                    _ => {panic!()} ,
+                }
+            },
+            _ => {panic!()}
+        }
+    }
+
+    #[test]
+    fn test_expr_parse_list() {
+        let i = "inputs.foo = [1, 2, 3]";
+        let o = expr_from_str(i, 0).unwrap();
+        match o {
+            Expression::Binary(BinaryOperation::Assign, l, r) => {
+                match (*l, *r) {
+                    (Expression::Identifier(_), Expression::Value(Value::List(_))) => (),
                     _ => {panic!()} ,
                 }
             },
