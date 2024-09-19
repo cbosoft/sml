@@ -206,6 +206,22 @@ pub fn compile(s: &str) -> SML_Result<StateMachine> {
                             state_data.as_mut().unwrap().has_always = true;
                             c_state_stack.push(CompileState::StateBranch);
                         }
+                        else if line_trim == "normally:" {
+                            let has_always = state_data.as_ref().unwrap().has_always;
+                            let has_otherwise = state_data.as_ref().unwrap().has_otherwise;
+                            if has_always || has_otherwise {
+                                return Err(SML_Error::SyntaxError(format!("Branch defined after always or otherwise on line {i}.")));
+                            }
+
+                            let has_other_branches = state_data.as_ref().unwrap().branches.len() > 0;
+                            if has_other_branches {
+                                return Err(SML_Error::SyntaxError(format!("Normally defined after another branch on line {i}. Normally must be the first branch.")));
+                            }
+
+                            let cond = Expression::Value(Value::Bool(true));
+                            state_branch_data = Some(StateBranchData::new(cond));
+                            c_state_stack.push(CompileState::StateBranch);
+                        }
                         else if line_trim == "otherwise:" {
                             let has_always = state_data.as_ref().unwrap().has_always;
                             let has_otherwise = state_data.as_ref().unwrap().has_otherwise;
