@@ -1,15 +1,11 @@
 use std::collections::HashMap;
 
-use chumsky::prelude::*;
-
 use crate::error::{SML_Error, SML_Result};
 use crate::expression::Expression;
-use crate::identifier::Identifier;
-use crate::operation::UnaryOperation;
-use crate::operation::BinaryOperation;
 use crate::state::{State, StateOp};
 use crate::value::Value;
 use crate::StateMachine;
+use crate::parse_expression::expr_from_str;
 
 
 enum CompileState {
@@ -18,99 +14,6 @@ enum CompileState {
     StateHead,
     StateBranch,
     DefaultHead,
-}
-
-
-fn expr_parser() -> impl Parser<char, Expression, Error = Simple<char>> {
-    let kw_nc = |s: &'static str| { text::keyword(s).map(|()| s.to_string() ) };
-
-    recursive(|e| {
-        let num = text::int(10)
-            //.then(just('.').then(text::digits(10)).or_not())
-            .map(| s: String | Expression::Value(Value::Number(s.parse().unwrap())))
-            .padded()
-            ;
-
-        let bul = choice((
-            kw_nc("true"),
-            kw_nc("false"),
-        )).map(|s| Expression::Value(Value::Bool(s == "true")));
-
-        let ident = choice((
-                kw_nc("inputs"),
-                kw_nc("outputs"),
-                kw_nc("globals"),
-            ))
-            .then(just('.'))
-            .then(text::ident())
-            .map(|((sa, c), sb): ((String, char), String)| { format!("{sa}{c}{sb}") })
-            .map(|s: String| { Expression::Identifier(Identifier::from_str(s).unwrap())})
-            .padded()
-            ;
-
-        let atom = num.or(bul).or(ident.clone()).or(e.delimited_by(just('('), just(')')));
-
-        let op = |c| just(c).padded();
-        let op2 = |s: &'static str| kw_nc(s).padded();
-
-        let unary = op('-')
-            .repeated()
-            .then(atom)
-            .foldr(|_op, rhs| Expression::Unary(UnaryOperation::Negate, Box::new(rhs)));
-
-        let curry_binary = |o: BinaryOperation | {
-            |lhs: Expression, rhs: Expression| {
-                Expression::Binary(o, Box::new(lhs), Box::new(rhs))
-            }
-        };
-
-        let product = unary.clone()
-            .then(choice((
-                    op('*').to(curry_binary(BinaryOperation::Multiply)),
-                    op('/').to(curry_binary(BinaryOperation::Divide)),
-                ))
-                .then(unary)
-                .repeated())
-            .foldl(|lhs, (op, rhs)| op(lhs, rhs));
-
-        let sum = product.clone()
-            .then(op('+').to(curry_binary(BinaryOperation::Add))
-                    .or(op('-').to(curry_binary(BinaryOperation::Subtract)))
-                    .then(product)
-                    .repeated())
-            .foldl(|lhs, (op, rhs)| op(lhs, rhs));
-
-        let cmp = sum.clone()
-            .then(choice((
-                    op2("==").to(curry_binary(BinaryOperation::Equal)),
-                    op2("!=").to(curry_binary(BinaryOperation::NotEqual)),
-                    op('<').to(curry_binary(BinaryOperation::LessThan)),
-                    op2("<=").to(curry_binary(BinaryOperation::LessThanOrEqual)),
-                    op('>').to(curry_binary(BinaryOperation::GreaterThan)),
-                    op2(">=").to(curry_binary(BinaryOperation::GreaterThanOrEqual)),
-                    op2("contains").to(curry_binary(BinaryOperation::Contains)),
-                ))
-                .then(sum)
-                .repeated())
-            .foldl(|lhs, (op, rhs)| op(lhs, rhs));
-
-        let assign = ident
-            .then(op('=').to(curry_binary(BinaryOperation::Assign))
-                .then(cmp.clone())
-                .repeated())
-            .foldl(|lhs, (op, rhs)| op(lhs, rhs));
-
-        assign.or(cmp).padded()
-    }).then_ignore(end())
-}
-
-
-fn expr_from_str(s: &str, lineno: usize) -> SML_Result<Expression> {
-    let parser = expr_parser();
-    match parser.parse(s) {
-        Err(e) => Err(SML_Error::CompilerError(format!("Failed to parse expr: {e:?}"))),
-        Ok(e) => Ok(e),
-    }
 }
 
 
@@ -435,27 +338,6 @@ mod tests {
     use super::*;
     use serde::{Serialize, Deserialize};
 
-    #[test]
-    fn test_expr_parse_1() {
-        let i = "1";
-        let o = expr_from_str(i, 0).unwrap();
-        assert!(matches!(o, Expression::Value(Value::Number(_))));
-    }
-
-    #[test]
-    fn test_expr_parse_2() {
-        let i = "  1 ";
-        let o = expr_from_str(i, 0).unwrap();
-        assert!(matches!(o, Expression::Value(Value::Number(_))));
-    }
-
-    #[test]
-    fn test_expr_parse_3() {
-        let i = "1 + 1";
-        let o = expr_from_str(i, 0).unwrap();
-        assert!(matches!(o, Expression::Binary(BinaryOperation::Add, _, _)));
-    }
-
     #[derive(Serialize, Deserialize)]
     struct Foo {
         pub bar: u64,
@@ -627,7 +509,7 @@ state final:
     fn test_compile_contains_1() {
         const SRC: &'static str = r#"
 state final:
-    when inputs.foo contains 0:
+    when inputs.foo ^= 0:
         outputs.bar = 1
     otherwise:
         outputs.bar = 0
@@ -648,7 +530,7 @@ state final:
     fn test_compile_contains_2() {
         const SRC: &'static str = r#"
 state final:
-    when outputs.bar contains 0:
+    when outputs.bar ^= 0:
         outputs.bar = 1
     otherwise:
         outputs.bar = 0

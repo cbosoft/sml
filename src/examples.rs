@@ -77,7 +77,7 @@
 //!   head:
 //!     globals.things = globals.things + inputs.thing
 //!     outputs.things = globals.things
-//!   when globals.things contains "lastthing":
+//!   when globals.things ^= "lastthing":
 //!     end
 //! "#;
 //!

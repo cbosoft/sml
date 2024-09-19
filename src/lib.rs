@@ -7,6 +7,7 @@ mod value;
 mod identifier;
 mod operation;
 mod expression;
+mod parse_expression;
 mod state;
 mod state_machine;
 
