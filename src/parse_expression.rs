@@ -12,9 +12,16 @@ fn expr_parser() -> impl Parser<char, Expression, Error = Simple<char>> {
     let kw_nc = |s: &'static str| { text::keyword(s).map(|()| s.to_string() ) };
 
     let value = recursive(|val|{
+        // TODO: floating point notation
         let num = text::int(10)
-            //.then(just('.').then(text::digits(10)).or_not())
-            .map(| s: String | Value::Number(s.parse().unwrap()))
+            .then(just('.').ignore_then(text::digits(10)).or_not())
+            .map(| (sa, sb): (String, Option<String>) |{ 
+                let s = match sb {
+                    Some(sb) => sa + &sb,
+                    None => sa,
+                };
+                Value::Number(s.parse().unwrap())
+            })
             .padded()
             ;
 
